@@ -1,370 +1,247 @@
-# MCP SSH Server v2.0 - Multi-Server Management
+# 🖥️ MCP SSH Server v2.0 — Multi-Server Management
 
-🚀 **Now with AI-driven multi-server management!**
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16-green.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io/)
 
-A comprehensive Model Context Protocol (MCP) server that enables AI models to autonomously manage multiple SSH connections simultaneously. Version 2.0 introduces intelligent connection management, allowing Claude to independently connect, switch between, and execute commands across multiple servers - making it a powerful DevOps assistant.
+> A comprehensive **Model Context Protocol (MCP)** server that enables AI assistants (Claude, etc.) to autonomously manage multiple SSH connections simultaneously. Connect, execute commands, manage Docker containers, and administer remote servers — all through natural language.
 
-## 🎯 Key Features (v2.0)
+---
 
-### New in Version 2.0
-- **🔄 Multi-Server Management**: Connect to unlimited SSH servers simultaneously
-- **💾 Connection Profiles**: Save and organize server configurations
-- **🔁 Auto-Reconnection**: Automatic recovery from connection losses
-- **⚡ Parallel Execution**: Run commands on multiple servers at once
-- **🏷️ Server Tagging**: Organize servers with tags for group operations
-- **🔀 Smart Switching**: Switch between servers without disconnecting
+## ✨ Key Features
 
-### Core Features
-- **SSH Connection Management**: Password and key-based authentication
-- **Command Execution**: Execute any shell command on remote servers
-- **File Operations**: Complete file and directory management
-- **Docker Integration**: Full Docker command support
-- **System Management**: Services, processes, network, and firewall control
-- **User Management**: Complete user and group administration
-- **Package Management**: Support for apt, yum, npm, pip, and more
+### 🔄 Multi-Server Management (v2.0)
+- **Unlimited simultaneous connections** — manage your entire infrastructure
+- **Connection profiles** — save, tag, and organize server configurations
+- **Auto-reconnection** — automatic recovery from connection losses
+- **Parallel execution** — run commands on multiple servers at once
+- **Smart switching** — instantly switch between active connections
 
-## Installation
+### 🛠️ Core Capabilities
+| Feature | Description |
+|---------|-------------|
+| **SSH Connections** | Password & SSH key authentication, SSH agent support |
+| **Command Execution** | Run any shell command, parallel multi-server execution |
+| **File Operations** | Read, write, delete, list directories, create/remove dirs |
+| **Docker** | Full lifecycle: ps, run, stop, start, restart, logs, exec, build, pull, push |
+| **System Management** | Services (systemctl), processes, network, firewall (ufw) |
+| **SFTP Support** | Upload/download files, directory operations |
 
-1. Clone the repository:
+---
+
+## 🚀 Quick Start
+
+### Installation
+
 ```bash
-git clone https://github.com/yourusername/mcp-ssh-server.git
-cd mcp-ssh-server
-```
+# Clone the repository
+git clone https://github.com/Mordozz/mcp-ssh.git
+cd mcp-ssh
 
-2. Install dependencies:
-```bash
+# Install dependencies
 npm install
-```
 
-3. Build the TypeScript code:
-```bash
+# Build TypeScript
 npm run build
 ```
 
-4. Create a `.env` file based on `.env.example` (optional):
+Or use the install scripts:
 ```bash
-cp .env.example .env
-```
+# Windows
+.\install.ps1
 
-## Configuration
+# Linux/macOS
+chmod +x install.sh && ./install.sh
+```
 
 ### Claude Desktop Configuration
 
-Add the server to your Claude Desktop configuration file:
+Add to your Claude config file:
 
-**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Linux**: `~/.config/Claude/claude_desktop_config.json`
+| OS | Path |
+|----|------|
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
 
 ```json
 {
   "mcpServers": {
-    "ssh-multi": {
+    "ssh-server": {
       "command": "node",
-      "args": ["C:\\Users\\your-username\\Projects\\mcp-ssh-server\\dist\\index.js"]
+      "args": ["/path/to/mcp-ssh/dist/index.js"]
     }
   }
 }
 ```
 
-### Configuration Storage
+Optionally set default connection via environment variables:
 
-Version 2.0 automatically saves connection configurations in `config/ssh-connections.json`. You can:
-- Save multiple server profiles
-- Tag servers for group operations  
-- Enable auto-reconnection
-- Store authentication credentials securely
-
-Environment variables (optional) for default connection:
-- `SSH_HOST`: Default SSH server hostname
-- `SSH_PORT`: Default SSH port (default: 22)
-- `SSH_USERNAME`: Default SSH username
-- `SSH_PASSWORD`: SSH password
-- `SSH_PRIVATE_KEY_PATH`: Path to private key file
-- `SSH_PASSPHRASE`: Passphrase for the private key
-
-## Quick Start Examples (v2.0)
-
-### Example 1: Managing Multiple Web Servers
-```
-Claude, I need to manage my web servers:
-1. Save connections to web1 (192.168.1.10), web2 (192.168.1.11), web3 (192.168.1.12) with username 'admin'
-2. Connect to all three
-3. Check nginx status on all servers
-4. Restart nginx where needed
-```
-
-### Example 2: Parallel Command Execution
-```
-Claude, execute 'docker ps' on all connected servers simultaneously and show me the results
-```
-
-### Example 3: Server Switching
-```
-Claude, switch to the database server and check MySQL status, then switch to the web server and check nginx logs
-```
-
-## Available Tools
-
-### 1. SSH Connection Management (Enhanced in v2.0)
-
-#### ssh_connect
-Establish an SSH connection to a remote server.
-
-Parameters:
-- `host` (required): SSH server hostname or IP
-- `port`: SSH port (default: 22)
-- `username` (required): SSH username
-- `password`: SSH password
-- `privateKeyPath`: Path to private key file
-- `passphrase`: Private key passphrase
-
-#### ssh_disconnect
-Disconnect from the current SSH server.
-
-#### ssh_status
-Check the current SSH connection status.
-
-### 2. Command Execution
-
-#### execute_command
-Execute any shell command on the remote server.
-
-Parameters:
-- `command` (required): Command to execute
-
-Example:
 ```json
 {
-  "command": "ls -la /var/www"
+  "mcpServers": {
+    "ssh-server": {
+      "command": "node",
+      "args": ["/path/to/mcp-ssh/dist/index.js"],
+      "env": {
+        "SSH_HOST": "192.168.1.100",
+        "SSH_USERNAME": "admin",
+        "SSH_PASSWORD": "your-password"
+      }
+    }
+  }
 }
 ```
 
-### 3. File Operations
+---
 
-#### file_operations
-Perform various file operations.
+## 📖 Usage Examples
 
-Parameters:
-- `operation` (required): One of: read, write, delete, list, create_dir, remove_dir
-- `path` (required): File or directory path
-- `content`: Content for write operations
-- `recursive`: For list operations, include subdirectories
-
-Examples:
-```json
-// Read a file
-{
-  "operation": "read",
-  "path": "/etc/nginx/nginx.conf"
-}
-
-// Write to a file
-{
-  "operation": "write",
-  "path": "/home/user/test.txt",
-  "content": "Hello, World!"
-}
-
-// List directory contents
-{
-  "operation": "list",
-  "path": "/var/log",
-  "recursive": true
-}
+### Managing Multiple Web Servers
+```
+Claude, save connections to web1 (192.168.1.10), web2 (192.168.1.11), 
+web3 (192.168.1.12) with username 'admin', connect to all three, 
+and check nginx status on each.
 ```
 
-### 4. Docker Commands
-
-#### docker_command
-Execute Docker operations.
-
-Parameters:
-- `action` (required): ps, images, run, stop, start, restart, remove, logs, exec, build, pull, push
-- `container`: Container name or ID
-- `image`: Docker image name
-- `command`: Command for exec/run operations
-- `options`: Additional Docker options
-
-Examples:
-```json
-// List all containers
-{
-  "action": "ps",
-  "options": "-a"
-}
-
-// Run a new container
-{
-  "action": "run",
-  "image": "nginx:latest",
-  "options": "-d -p 80:80 --name my-nginx"
-}
-
-// Execute command in container
-{
-  "action": "exec",
-  "container": "my-nginx",
-  "command": "nginx -s reload"
-}
+### Parallel Command Execution
+```
+Claude, execute 'docker ps' on all connected servers simultaneously.
 ```
 
-### 5. System Management
-
-#### system_management
-Manage system services, processes, and network.
-
-Parameters:
-- `category` (required): service, process, network, firewall, system
-- `action` (required): Action to perform
-- `target`: Target service, process, or port
-- `options`: Additional options
-
-Examples:
-```json
-// Restart a service
-{
-  "category": "service",
-  "action": "restart",
-  "target": "nginx"
-}
-
-// List network connections
-{
-  "category": "network",
-  "action": "list"
-}
-
-// System information
-{
-  "category": "system",
-  "action": "info"
-}
+### Server Switching
+```
+Claude, switch to the database server and check MySQL status, 
+then switch to the web server and check nginx logs.
 ```
 
-### 6. User Management
+---
 
-#### user_management
-Manage users and groups.
+## 🔧 Available Tools (15 tools)
 
-Parameters:
-- `action` (required): create_user, delete_user, modify_user, list_users, create_group, delete_group, list_groups, change_password
-- `username`: Username
-- `groupname`: Group name
-- `password`: Password for user
-- `options`: Additional options
+### SSH Connection Management
 
-Examples:
-```json
-// Create a new user
-{
-  "action": "create_user",
-  "username": "newuser",
-  "options": "-m -s /bin/bash"
-}
+| Tool | Description |
+|------|-------------|
+| `ssh_save_connection` | Save a connection profile with name, host, credentials, tags |
+| `ssh_connect` | Connect to a saved or new server |
+| `ssh_quick_connect` | Temporary connection without saving |
+| `ssh_disconnect` | Disconnect from a specific or active connection |
+| `ssh_disconnect_all` | Close all SSH connections |
+| `ssh_list_connections` | List all connections and their status |
+| `ssh_switch_connection` | Switch active connection |
+| `ssh_remove_connection` | Delete a saved connection profile |
+| `ssh_test_connection` | Test connectivity without connecting |
+| `ssh_connection_info` | Get detailed info about a connection |
 
-// Change user password
-{
-  "action": "change_password",
-  "username": "newuser",
-  "password": "newpassword123"
-}
+### Command Execution
+
+| Tool | Description |
+|------|-------------|
+| `execute_command` | Execute a shell command on active/specified connection |
+| `execute_on_multiple` | Run a command on multiple servers (parallel or sequential) |
+
+### File, Docker & System
+
+| Tool | Description |
+|------|-------------|
+| `file_operations` | read, write, delete, list, create_dir, remove_dir |
+| `docker_command` | ps, images, run, stop, start, restart, remove, logs, exec, build, pull, push |
+| `system_management` | service, process, network, firewall, system info/reboot |
+
+---
+
+## 🏗️ Architecture
+
+```
+src/
+├── index.ts                 # Entry point (StdioTransport)
+├── server.ts                # MCP Server setup & request routing
+├── connection-manager.ts    # Multi-connection SSH manager
+├── types.ts                 # Shared TypeScript types
+├── handlers/
+│   ├── connection-handlers.ts
+│   ├── command-handlers.ts
+│   ├── file-handlers.ts
+│   ├── docker-handlers.ts
+│   └── system-handlers.ts
+├── tools/
+│   ├── connection-tools.ts  # Tool definitions (JSON Schema)
+│   ├── command-tools.ts
+│   ├── file-tools.ts
+│   ├── docker-tools.ts
+│   └── system-tools.ts
+└── utils/
+    └── ssh-helpers.ts       # SFTP operations, command builders
 ```
 
-### 7. Package Management
+---
 
-#### package_management
-Manage system packages.
+## ⚙️ Environment Variables
 
-Parameters:
-- `manager` (required): apt, yum, dnf, npm, pip, composer, gem
-- `action` (required): install, remove, update, upgrade, search, list
-- `package`: Package name
-- `options`: Additional options
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SSH_HOST` | Default server hostname | — |
+| `SSH_PORT` | Default SSH port | `22` |
+| `SSH_USERNAME` | Default username | — |
+| `SSH_PASSWORD` | Default password | — |
+| `SSH_PRIVATE_KEY_PATH` | Path to SSH private key | — |
+| `SSH_PASSPHRASE` | Key passphrase | — |
+| `SSH_DEBUG` | Enable debug logging | `false` |
 
-Examples:
-```json
-// Install a package
-{
-  "manager": "apt",
-  "action": "install",
-  "package": "nginx"
-}
+---
 
-// Update package lists
-{
-  "manager": "apt",
-  "action": "update"
-}
+## 🔒 Security
 
-// Install npm package globally
-{
-  "manager": "npm",
-  "action": "install",
-  "package": "express",
-  "options": "-g"
-}
-```
+- **Prefer SSH key authentication** over passwords
+- **Never commit `.env` files** — they are in `.gitignore`
+- Connection configs are stored locally in `config/ssh-connections.json`
+- Commands execute with the SSH user's permissions — be cautious with sudo
+- Ensure SSH connections are made over trusted networks
 
-## Security Considerations
+---
 
-1. **Authentication**: Always use secure authentication methods. Prefer key-based authentication over passwords.
-
-2. **Permissions**: The server executes commands with the permissions of the SSH user. Be cautious with sudo operations.
-
-3. **Environment**: Never commit `.env` files with sensitive credentials to version control.
-
-4. **Network**: Ensure SSH connections are made over secure networks.
-
-## Development
-
-### Running in Development Mode
+## 🧑‍💻 Development
 
 ```bash
+# Development mode (hot reload via tsx)
 npm run dev
-```
 
-### Building
-
-```bash
+# Build for production
 npm run build
-```
 
-### Watch Mode
-
-```bash
+# Watch mode
 npm run watch
 ```
 
-## Troubleshooting
+---
 
-### Connection Issues
+## 🐛 Troubleshooting
 
-1. Verify SSH credentials are correct
-2. Check if the SSH port is open on the remote server
-3. Ensure the SSH service is running on the remote server
-4. For key-based auth, verify the private key has correct permissions (600)
+**Connection fails:**
+- Verify SSH credentials and that the server is reachable
+- Check if the SSH port is open (`ssh -p PORT user@host`)
+- For key auth, ensure correct permissions (`chmod 600 ~/.ssh/id_rsa`)
 
-### Permission Errors
+**Permission errors:**
+- Verify the SSH user has necessary permissions
+- For system operations, ensure sudo is configured
+- For Docker, ensure the user is in the `docker` group
 
-1. Check if the SSH user has necessary permissions
-2. For system operations, ensure sudo access is configured
-3. For Docker commands, ensure the user is in the docker group
+**Debug mode:**
+- Set `SSH_DEBUG=true` in your environment for detailed SSH logging
 
-### Command Execution Failures
+---
 
-1. Check if the command exists on the remote system
-2. Verify PATH environment variable includes command locations
-3. For package managers, ensure they are installed on the system
+## 📄 License
 
-## License
+MIT License — see [LICENSE](LICENSE) for details.
 
-MIT License - see LICENSE file for details.
-
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## Support
+## 📬 Support
 
-For issues and feature requests, please use the GitHub issue tracker.
+For issues and feature requests, please use the [GitHub Issues](https://github.com/Mordozz/mcp-ssh/issues).
