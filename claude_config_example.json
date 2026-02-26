@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "ssh-server": {
+      "command": "node",
+      "args": ["C:\\Users\\your-username\\Projects\\mcp-ssh-server\\dist\\index.js"],
+      "env": {
+        "SSH_HOST": "192.168.1.100",
+        "SSH_USERNAME": "admin",
+        "SSH_PASSWORD": "your-password"
+      }
+    },
+    "ssh-server-with-key": {
+      "command": "node",
+      "args": ["C:\\Users\\your-username\\Projects\\mcp-ssh-server\\dist\\index.js"],
+      "env": {
+        "SSH_HOST": "example.com",
+        "SSH_PORT": "22",
+        "SSH_USERNAME": "deploy",
+        "SSH_PRIVATE_KEY_PATH": "C:\\Users\\your-username\\.ssh\\id_rsa",
+        "SSH_PASSPHRASE": "optional-passphrase"
+      }
+    }
+  }
+}
