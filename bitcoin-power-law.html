@@ -439,6 +439,7 @@ function buildLayout() {
     hovermode: "closest",
     hoverdistance: 1,   // не "примагничивать" к точкам — crosshair следует за курсором
     spikedistance: -1,  // спайки активны на всей плоскости
+    dragmode: "pan",    // левая кнопка — панорама графика; колесо — зум
     xaxis,
     yaxis: {
       title: "Цена " + CFG.symbol + " (USD, log)",
@@ -458,6 +459,8 @@ function render() {
   if (ph) ph.remove();
   Plotly.react("chart", buildTraces(), buildLayout(), {
     responsive: true, displaylogo: false,
+    scrollZoom: true,   // колесо мыши — зум
+    doubleClick: "reset",
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   });
   attachCrosshairLabel();

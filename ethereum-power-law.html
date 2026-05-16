@@ -436,6 +436,7 @@ function buildLayout() {
     hovermode: "closest",
     hoverdistance: 1,
     spikedistance: -1,
+    dragmode: "pan",
     xaxis,
     yaxis: {
       title: "Цена " + CFG.symbol + " (USD, log)",
@@ -455,6 +456,8 @@ function render() {
   if (ph) ph.remove();
   Plotly.react("chart", buildTraces(), buildLayout(), {
     responsive: true, displaylogo: false,
+    scrollZoom: true,
+    doubleClick: "reset",
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   });
   attachCrosshairLabel();
