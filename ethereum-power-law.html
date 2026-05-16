@@ -227,8 +227,21 @@ function priceAtDay(fit, days) {
   return Math.pow(10, fit.a + fit.b * Math.log10(days));
 }
 const fairAt = days => priceAtDay(model, days);
-const resistAt = days => priceAtDay(resistFit, days);
-const supportAt = days => priceAtDay(supportFit, days);
+// resistance >= fair, support <= fair — асимптота при пересечении.
+const resistAt = days => {
+  const r = priceAtDay(resistFit, days);
+  const f = fairAt(days);
+  if (!isFinite(r)) return f;
+  if (!isFinite(f)) return r;
+  return Math.max(r, f);
+};
+const supportAt = days => {
+  const s = priceAtDay(supportFit, days);
+  const f = fairAt(days);
+  if (!isFinite(s)) return f;
+  if (!isFinite(f)) return s;
+  return Math.min(s, f);
+};
 
 // =========== Date / day label helpers ==============================
 function fmtUsd(p) {
