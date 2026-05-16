@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Ethereum Power Law Regression — TradingView Lightweight Charts</title>
+<title>Ethereum Power Law Regression — Log/Log</title>
 <style>
   :root {
     --bg: #0d1117;
@@ -51,30 +51,12 @@
   .controls button:hover, .controls select:hover { border-color: var(--accent); }
   .controls button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .controls .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
-  #chart-wrap { position: relative; width: 100%; height: calc(100vh - 230px); min-height: 500px; }
-  #chart { width: 100%; height: 100%; }
-  #placeholder {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    color: var(--text-dim); font-size: 14px; text-align: center; padding: 20px; pointer-events: none;
+  #chart { width: 100%; height: calc(100vh - 230px); min-height: 500px; }
+  #chart .placeholder {
+    height: 100%; display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim); font-size: 14px; text-align: center; padding: 20px;
   }
-  #placeholder.error { color: var(--red); }
-  #tooltip {
-    position: absolute; pointer-events: none; display: none;
-    background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
-    padding: 8px 12px; font-size: 12px; line-height: 1.5;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4); font-variant-numeric: tabular-nums; z-index: 10;
-    min-width: 220px;
-  }
-  #tooltip .date { color: var(--text-dim); font-size: 11px; margin-bottom: 4px; }
-  #tooltip .row { display: flex; justify-content: space-between; gap: 12px; }
-  #tooltip .row .k { color: var(--text-dim); }
-  #tooltip .row .v { font-weight: 600; }
-  #tooltip .v.price { color: var(--blue); }
-  #tooltip .v.fair { color: var(--accent); }
-  #tooltip .v.top { color: var(--red); }
-  #tooltip .v.bot { color: var(--green); }
-  #tooltip .v.pos.high { color: var(--red); }
-  #tooltip .v.pos.low { color: var(--green); }
+  #chart .placeholder.error { color: var(--red); }
   footer {
     padding: 10px 24px; border-top: 1px solid var(--border);
     color: var(--text-dim); font-size: 11px; background: var(--panel);
@@ -91,7 +73,7 @@
 <body>
 
 <header>
-  <h1>Ethereum Power Law Regression <small>TradingView Lightweight Charts · log-y · справедливая стоимость и канал по экстремумам</small></h1>
+  <h1>Ethereum Power Law Regression <small>log–log регрессия · справедливая стоимость и канал по цикловым экстремумам</small></h1>
   <div class="stats">
     <div class="stat"><div class="label">Цена ETH</div><div id="stat-price" class="value accent">—</div></div>
     <div class="stat"><div class="label">Fair Value</div><div id="stat-fair" class="value">—</div></div>
@@ -101,37 +83,39 @@
 </header>
 
 <div class="controls">
-  <button id="btn-channels" class="active">Support / Resistance (PL)</button>
-  <button id="btn-markers" class="active">Маркеры пиков/впадин</button>
-  <button id="btn-quantile">Квантильный канал (5%/95%)</button>
-  <button id="btn-fair" class="active">Fair Value</button>
-  <div class="sep"></div>
-  <label>Базовая дата:
-    <select id="basis">
-      <option value="genesis" selected>Genesis (2015-07-30)</option>
-      <option value="first">Первая цена (2015-08-07)</option>
+  <label>Вид:
+    <select id="x-mode">
+      <option value="loglog" selected>log X · log Y (true power law)</option>
+      <option value="date">Дата X · log Y</option>
     </select>
   </label>
   <div class="sep"></div>
-  <button id="btn-fit">Сбросить масштаб</button>
+  <button id="btn-channels" class="active">Support / Resistance</button>
+  <button id="btn-markers" class="active">Маркеры пиков / впадин</button>
+  <button id="btn-fair" class="active">Fair Value</button>
+  <div class="sep"></div>
+  <label>Прогноз вперёд:
+    <select id="horizon">
+      <option value="3">3 года</option>
+      <option value="5" selected>5 лет</option>
+      <option value="10">10 лет</option>
+      <option value="15">15 лет</option>
+    </select>
+  </label>
   <div class="sep"></div>
   <span class="cross-link">→ <a href="bitcoin-power-law.html">Bitcoin</a></span>
   <div class="sep"></div>
   <span id="status" class="status-loading">Инициализация…</span>
 </div>
 
-<div id="chart-wrap">
-  <div id="chart"></div>
-  <div id="placeholder">Загружаем библиотеку графиков…</div>
-  <div id="tooltip"></div>
-</div>
+<div id="chart"><div class="placeholder" id="ph">Загружаем библиотеку графиков…</div></div>
 
 <footer>
   <div>
-    Модель: <span class="formula">log₁₀(price) = a + b · log₁₀(days)</span>
+    Модель: <span class="formula">log₁₀(price) = a + b · log₁₀(дни от genesis)</span>
     · <span id="model-coef">a = —, b = —</span>
   </div>
-  <div>Источник данных: <span id="data-source">—</span></div>
+  <div>Источник: <span id="data-source">—</span></div>
 </footer>
 
 <script>
@@ -150,54 +134,50 @@ const CFG = {
     ["2023-12-31", 2294.0], ["2024-12-31", 3337.0], ["2025-04-30", 1797.0]
   ],
 };
-
 document.documentElement.style.setProperty("--accent", CFG.accent);
 
 const GENESIS = new Date(CFG.genesis + "T00:00:00Z");
 const FIRST_PRICE_DATE = new Date(CFG.firstPrice + "T00:00:00Z");
 const MS_PER_DAY = 86400000;
-
-let basisDate = GENESIS;
+const basisDate = GENESIS; // фит всегда от genesis
 const daysSinceBasis = d => (d.getTime() - basisDate.getTime()) / MS_PER_DAY;
+const dateFromDays = days => new Date(basisDate.getTime() + days * MS_PER_DAY);
 
-// =========== OLS power law ==========================================
-function fitPowerLaw(pts) {
+// =========== OLS power law =========================================
+function fitOLS(pts) {
   const xs = [], ys = [];
   for (const p of pts) {
-    const days = daysSinceBasis(p.date);
-    if (days <= 0 || p.price <= 0) continue;
-    xs.push(Math.log10(days)); ys.push(Math.log10(p.price));
+    const d = daysSinceBasis(p.date);
+    if (d <= 0 || p.price <= 0) continue;
+    xs.push(Math.log10(d));
+    ys.push(Math.log10(p.price));
   }
   const n = xs.length;
   const mx = xs.reduce((a, b) => a + b, 0) / n;
   const my = ys.reduce((a, b) => a + b, 0) / n;
   let num = 0, den = 0;
   for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
-  const b = num / den, a = my - b * mx;
-  const residuals = xs.map((x, i) => ys[i] - (a + b * x));
+  const b = num / den;
+  const a = my - b * mx;
   let ssRes = 0, ssTot = 0;
-  for (let i = 0; i < n; i++) { ssRes += residuals[i] ** 2; ssTot += (ys[i] - my) ** 2; }
-  return { a, b, residuals, xs, ys, r2: 1 - ssRes / ssTot, n };
-}
-function quantile(arr, q) {
-  const s = [...arr].sort((x, y) => x - y);
-  const pos = (s.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
-  return lo === hi ? s[lo] : s[lo] + (s[hi] - s[lo]) * (pos - lo);
+  for (let i = 0; i < n; i++) {
+    const r = ys[i] - (a + b * xs[i]);
+    ssRes += r * r;
+    ssTot += (ys[i] - my) ** 2;
+  }
+  return { a, b, r2: 1 - ssRes / ssTot, n };
 }
 
-// Цикловые экстремумы: локальный max/min в окне ±windowDays. Используются
-// для отдельных степенных фитов resistance / support — это и есть
-// канонический «канал power law» (Santostasi): три линии с разными наклонами,
-// сходящиеся к fair value, а НЕ параллельный envelope.
-const CYCLE_WINDOW_DAYS = 365;
-function detectCycleExtremes(pts, windowDays) {
-  const tops = [], bottoms = [];
+// Цикловые экстремумы: локальный max/min в окне ±W дней.
+const CYCLE_W = 365;
+function detectCycleExtremes(pts, W) {
+  const tops = [], bots = [];
   const n = pts.length;
   let lo = 0, hi = 0;
   for (let i = 0; i < n; i++) {
     const t = pts[i].date.getTime();
-    while (hi < n - 1 && (pts[hi + 1].date.getTime() - t) / MS_PER_DAY <= windowDays) hi++;
-    while (lo < n - 1 && (t - pts[lo].date.getTime()) / MS_PER_DAY > windowDays) lo++;
+    while (hi < n - 1 && (pts[hi + 1].date.getTime() - t) / MS_PER_DAY <= W) hi++;
+    while (lo < n - 1 && (t - pts[lo].date.getTime()) / MS_PER_DAY > W) lo++;
     let isMax = true, isMin = true;
     for (let j = lo; j <= hi; j++) {
       if (j === i) continue;
@@ -206,234 +186,266 @@ function detectCycleExtremes(pts, windowDays) {
       if (!isMax && !isMin) break;
     }
     if (isMax) tops.push(pts[i]);
-    if (isMin) bottoms.push(pts[i]);
+    if (isMin) bots.push(pts[i]);
   }
-  return { tops, bottoms };
+  return { tops, bots };
 }
 
-// =========== State ===================================================
+// =========== State ==================================================
 let points = CFG.embedded.map(([d, p]) => ({ date: new Date(d + "T00:00:00Z"), price: p }));
-let model = null, extremes = null, quantiles = null;
-let cycle = { tops: [], bottoms: [] }, resistFit = null, supportFit = null;
 let dataSource = "embedded (" + points.length + " pts)";
-const SHOW = { extremes: true, quantile: false, fair: true, markers: true };
+let model = null, cycle = { tops: [], bots: [] }, resistFit = null, supportFit = null;
+
+const SHOW = { extremes: true, markers: true, fair: true };
+let MODE = "loglog";
+let HORIZON_YEARS = 5;
 
 function recompute() {
-  model = fitPowerLaw(points);
-  const r = model.residuals;
-  extremes = { upper: Math.max(...r), lower: Math.min(...r) };
-  quantiles = { upper: quantile(r, 0.95), lower: quantile(r, 0.05) };
-
-  cycle = detectCycleExtremes(points, CYCLE_WINDOW_DAYS);
-  resistFit = cycle.tops.length >= 3 ? fitPowerLaw(cycle.tops) : null;
-  supportFit = cycle.bottoms.length >= 3 ? fitPowerLaw(cycle.bottoms) : null;
-
-  const coefEl = document.getElementById("model-coef");
+  model = fitOLS(points);
+  cycle = detectCycleExtremes(points, CYCLE_W);
+  resistFit = cycle.tops.length >= 3 ? fitOLS(cycle.tops) : null;
+  supportFit = cycle.bots.length >= 3 ? fitOLS(cycle.bots) : null;
   let txt = `central: a=${model.a.toFixed(3)}, b=${model.b.toFixed(3)}, R²=${model.r2.toFixed(3)}, n=${model.n}`;
-  if (resistFit) txt += ` · resistance: b=${resistFit.b.toFixed(2)} (n=${cycle.tops.length})`;
-  if (supportFit) txt += ` · support: b=${supportFit.b.toFixed(2)} (n=${cycle.bottoms.length})`;
-  coefEl.textContent = txt;
+  if (resistFit) txt += ` · resistance: a=${resistFit.a.toFixed(2)}, b=${resistFit.b.toFixed(2)} (n=${cycle.tops.length})`;
+  if (supportFit) txt += ` · support: a=${supportFit.a.toFixed(2)}, b=${supportFit.b.toFixed(2)} (n=${cycle.bots.length})`;
+  document.getElementById("model-coef").textContent = txt;
 }
-const fairValue = d => {
-  const days = daysSinceBasis(d);
-  return days <= 0 ? NaN : Math.pow(10, model.a + model.b * Math.log10(days));
-};
-const channelAt = (d, dev) => fairValue(d) * Math.pow(10, dev);
-const resistanceAt = d => {
-  if (!resistFit) return channelAt(d, extremes.upper);
-  const days = daysSinceBasis(d);
-  if (days <= 0) return NaN;
-  return Math.pow(10, resistFit.a + resistFit.b * Math.log10(days));
-};
-const supportAt = d => {
-  if (!supportFit) return channelAt(d, extremes.lower);
-  const days = daysSinceBasis(d);
-  if (days <= 0) return NaN;
-  return Math.pow(10, supportFit.a + supportFit.b * Math.log10(days));
-};
 
-// =========== Lightweight Charts ====================================
-let chart, sPrice, sFair, sUpE, sLowE, sUpQ, sLowQ;
+function priceAtDay(fit, days) {
+  if (!fit || days <= 0) return NaN;
+  return Math.pow(10, fit.a + fit.b * Math.log10(days));
+}
+const fairAt = days => priceAtDay(model, days);
+const resistAt = days => priceAtDay(resistFit, days);
+const supportAt = days => priceAtDay(supportFit, days);
 
+// =========== Date / day label helpers ==============================
 function fmtUsd(p) {
   if (!isFinite(p)) return "—";
-  if (p >= 1000) {
-    // Ручное разделение тысяч пробелами, без toLocaleString (некоторые headless-локали ломаются)
-    const s = Math.round(p).toString();
-    return "$" + s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  }
+  if (p >= 1000) return "$" + Math.round(p).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   if (p >= 1) return "$" + p.toFixed(2);
   return "$" + p.toFixed(4);
 }
-
-function initChart() {
-  const el = document.getElementById("chart");
-  chart = LightweightCharts.createChart(el, {
-    width: el.clientWidth,
-    height: el.clientHeight,
-    layout: {
-      background: { type: "solid", color: "#0d1117" },
-      textColor: "#8b949e",
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    },
-    grid: {
-      vertLines: { color: "#21262d" },
-      horzLines: { color: "#21262d" },
-    },
-    rightPriceScale: {
-      mode: LightweightCharts.PriceScaleMode.Logarithmic,
-      borderColor: "#30363d",
-      scaleMargins: { top: 0.05, bottom: 0.05 },
-    },
-    timeScale: {
-      borderColor: "#30363d",
-      timeVisible: false,
-      secondsVisible: false,
-      rightOffset: 30,
-      // Нужно вместить ~5800 дневных баров на ширину 1500-2000px → ≤0.3px/бар
-      minBarSpacing: 0.05,
-      barSpacing: 0.3,
-    },
-    crosshair: {
-      mode: LightweightCharts.CrosshairMode.Normal,
-      vertLine: { color: "#58a6ff", width: 1, style: 2, labelBackgroundColor: "#1c2330" },
-      horzLine: { color: "#58a6ff", width: 1, style: 2, labelBackgroundColor: "#1c2330" },
-    },
-    localization: {
-      priceFormatter: fmtUsd,
-    },
-  });
-
-  // Явный resize при изменении размера окна (вместо autoSize, который ненадёжен)
-  const resize = () => {
-    if (!chart) return;
-    chart.resize(el.clientWidth, el.clientHeight);
-  };
-  window.addEventListener("resize", resize);
-  setTimeout(resize, 50);
-
-  // Создаём серии в правильном z-порядке (рисуются по порядку добавления)
-  sLowE = chart.addLineSeries({ color: "#3fb950", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-  sUpE  = chart.addLineSeries({ color: "#f85149", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-  sLowQ = chart.addLineSeries({ color: "#58a6ff", lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false });
-  sUpQ  = chart.addLineSeries({ color: "#d29922", lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false });
-  sFair = chart.addLineSeries({ color: CFG.accent, lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
-  sPrice = chart.addLineSeries({ color: "#58a6ff", lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
-
-  const tooltip = document.getElementById("tooltip");
-  chart.subscribeCrosshairMove(param => {
-    if (!param.time || !param.point || param.point.x < 0 || param.point.x > el.clientWidth) {
-      tooltip.style.display = "none"; return;
-    }
-    const date = new Date((typeof param.time === "number" ? param.time : 0) * 1000);
-    const fair = fairValue(date);
-    const upE = resistanceAt(date);
-    const lowE = supportAt(date);
-    const upQ = channelAt(date, quantiles.upper);
-    const lowQ = channelAt(date, quantiles.lower);
-    const pData = param.seriesData.get(sPrice);
-    const price = pData ? pData.value : NaN;
-    const pos = isFinite(price) ?
-      ((Math.log10(price) - Math.log10(lowE)) / (Math.log10(upE) - Math.log10(lowE))) * 100 : NaN;
-    const posCls = isFinite(pos) ? (pos > 80 ? "high" : pos < 20 ? "low" : "") : "";
-    const fmtP = fmtUsd;
-    let html = `<div class="date">${date.toISOString().slice(0,10)}</div>`;
-    if (isFinite(price)) html += `<div class="row"><span class="k">Цена</span><span class="v price">${fmtP(price)}</span></div>`;
-    html += `<div class="row"><span class="k">Fair Value</span><span class="v fair">${fmtP(fair)}</span></div>`;
-    if (SHOW.extremes) {
-      html += `<div class="row"><span class="k">Resistance</span><span class="v top">${fmtP(upE)}</span></div>`;
-      html += `<div class="row"><span class="k">Support</span><span class="v bot">${fmtP(lowE)}</span></div>`;
-    }
-    if (SHOW.quantile) {
-      html += `<div class="row"><span class="k">95%</span><span class="v top">${fmtP(upQ)}</span></div>`;
-      html += `<div class="row"><span class="k">5%</span><span class="v bot">${fmtP(lowQ)}</span></div>`;
-    }
-    if (isFinite(price)) {
-      const dev = (price / fair - 1) * 100;
-      html += `<div class="row"><span class="k">Откл. от fair</span><span class="v ${dev>=0?"top":"bot"}">${dev>=0?"+":""}${dev.toFixed(1)}%</span></div>`;
-      html += `<div class="row"><span class="k">В канале</span><span class="v pos ${posCls}">${pos.toFixed(0)}%</span></div>`;
-    }
-    tooltip.innerHTML = html;
-    tooltip.style.display = "block";
-    const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
-    const cw = el.clientWidth, ch = el.clientHeight;
-    let x = param.point.x + 15, y = param.point.y + 15;
-    if (x + tw > cw) x = param.point.x - tw - 15;
-    if (y + th > ch) y = param.point.y - th - 15;
-    tooltip.style.left = x + "px";
-    tooltip.style.top = y + "px";
-  });
+function fmtDate(d) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
 }
 
-function asTime(d) { return Math.floor(d.getTime() / 1000); }
+// Подписи по годам для логарифмической оси X (значения — дни, текст — год).
+function yearTicksForLogAxis(fromDay, toDay) {
+  const tickvals = [], ticktext = [];
+  const firstYear = dateFromDays(fromDay).getUTCFullYear();
+  const lastYear = dateFromDays(toDay).getUTCFullYear();
+  for (let y = firstYear; y <= lastYear; y++) {
+    const d = new Date(Date.UTC(y, 0, 1));
+    const days = daysSinceBasis(d);
+    if (days >= fromDay && days <= toDay) {
+      tickvals.push(days);
+      ticktext.push(String(y));
+    }
+  }
+  return { tickvals, ticktext };
+}
 
-function buildSeriesData() {
-  const lastDate = points[points.length - 1].date;
-  const horizon = new Date(lastDate.getTime() + 5 * 365 * MS_PER_DAY);
-  // grid от первой ценовой точки до 5 лет вперёд
-  const startDate = points[0].date;
+// =========== Build series / layout =================================
+function buildData() {
+  const lastPriceDay = daysSinceBasis(points[points.length - 1].date);
+  const horizonDay = lastPriceDay + HORIZON_YEARS * 365;
+  const firstPriceDay = Math.max(1, daysSinceBasis(points[0].date));
+
+  // Сетка регрессионных линий: 200 точек логарифмически распределённых,
+  // чтобы кривая была гладкой и в log-log, и в date-режиме.
   const grid = [];
-  // Lightweight Charts требует уникальных возрастающих time. Шаг 10 дней — достаточно гладко.
-  for (let t = startDate.getTime(); t <= horizon.getTime(); t += 10 * MS_PER_DAY) {
-    grid.push(new Date(t));
+  const logFrom = Math.log10(firstPriceDay);
+  const logTo = Math.log10(horizonDay);
+  const N = 240;
+  for (let i = 0; i <= N; i++) {
+    const lg = logFrom + (logTo - logFrom) * (i / N);
+    grid.push(Math.pow(10, lg));
   }
-  const priceData = points.map(p => ({ time: asTime(p.date), value: p.price }));
-  // Удалим возможные дубликаты по дате (на случай если spot совпал с последней)
-  const seen = new Set();
-  const priceDedup = [];
-  for (const p of priceData) {
-    if (seen.has(p.time)) priceDedup[priceDedup.length - 1] = p;
-    else { seen.add(p.time); priceDedup.push(p); }
-  }
-  const mk = (fn) => grid.map(d => ({ time: asTime(d), value: fn(d) })).filter(x => isFinite(x.value) && x.value > 0);
+
   return {
-    price: priceDedup,
-    fair:  mk(fairValue),
-    upE:   mk(resistanceAt),
-    lowE:  mk(supportAt),
-    upQ:   mk(d => channelAt(d, quantiles.upper)),
-    lowQ:  mk(d => channelAt(d, quantiles.lower)),
+    grid,
+    firstPriceDay, lastPriceDay, horizonDay,
+  };
+}
+
+function buildTraces() {
+  const { grid } = buildData();
+  const isLogLog = MODE === "loglog";
+
+  const xOf = (days) => isLogLog ? days : dateFromDays(days);
+  const xPoints = points.map(p => xOf(daysSinceBasis(p.date)));
+  const yPoints = points.map(p => p.price);
+
+  const xGrid = grid.map(xOf);
+  const fair = grid.map(fairAt);
+  const resist = grid.map(resistAt);
+  const support = grid.map(supportAt);
+
+  // Кастомные метки для tooltip: формат даты + цена + отклонение от fair
+  const customPrices = points.map((p, i) => {
+    const d = daysSinceBasis(p.date);
+    const fv = fairAt(d);
+    const dev = (p.price / fv - 1) * 100;
+    return [fmtDate(p.date), p.price, dev];
+  });
+
+  const traces = [];
+
+  // Канал: support и resistance с заливкой между ними
+  if (SHOW.extremes && resistFit && supportFit) {
+    traces.push({
+      x: xGrid, y: resist,
+      name: `Resistance (b=${resistFit.b.toFixed(2)})`,
+      mode: "lines",
+      line: { color: "#f85149", width: 1.5, dash: "dot" },
+      hovertemplate: "Resistance: $%{y:,.0f}<extra></extra>",
+    });
+    traces.push({
+      x: xGrid, y: support,
+      name: `Support (b=${supportFit.b.toFixed(2)})`,
+      mode: "lines",
+      line: { color: "#3fb950", width: 1.5, dash: "dot" },
+      fill: "tonexty",
+      fillcolor: "rgba(247, 147, 26, 0.04)",
+      hovertemplate: "Support: $%{y:,.0f}<extra></extra>",
+    });
+  }
+
+  // Fair Value
+  if (SHOW.fair) {
+    traces.push({
+      x: xGrid, y: fair,
+      name: `Fair Value (b=${model.b.toFixed(2)})`,
+      mode: "lines",
+      line: { color: CFG.accent, width: 2.5 },
+      hovertemplate: "Fair: $%{y:,.2f}<extra></extra>",
+    });
+  }
+
+  // Точки цены
+  traces.push({
+    x: xPoints, y: yPoints,
+    name: CFG.symbol + " цена",
+    mode: "lines",
+    line: { color: "#58a6ff", width: 1 },
+    customdata: customPrices,
+    hovertemplate: "<b>%{customdata[0]}</b><br>" + CFG.symbol + ": $%{customdata[1]:,.2f}<br>Откл. от fair: %{customdata[2]:+.1f}%<extra></extra>",
+  });
+
+  // Маркеры цикловых экстремумов
+  if (SHOW.markers) {
+    if (cycle.tops.length) {
+      traces.push({
+        x: cycle.tops.map(p => xOf(daysSinceBasis(p.date))),
+        y: cycle.tops.map(p => p.price),
+        name: "Цикловые пики",
+        mode: "markers+text",
+        marker: { color: "#f85149", size: 9, symbol: "triangle-down", line: { color: "#fff", width: 1 } },
+        text: cycle.tops.map(p => fmtDate(p.date).slice(0, 7)),
+        textposition: "top center",
+        textfont: { color: "#f85149", size: 9 },
+        hovertemplate: cycle.tops.map(p => `<b>${fmtDate(p.date)}</b><br>TOP: $${p.price.toLocaleString("en-US", { maximumFractionDigits: 2 })}<extra></extra>`),
+      });
+    }
+    if (cycle.bots.length) {
+      traces.push({
+        x: cycle.bots.map(p => xOf(daysSinceBasis(p.date))),
+        y: cycle.bots.map(p => p.price),
+        name: "Цикловые впадины",
+        mode: "markers+text",
+        marker: { color: "#3fb950", size: 9, symbol: "triangle-up", line: { color: "#fff", width: 1 } },
+        text: cycle.bots.map(p => fmtDate(p.date).slice(0, 7)),
+        textposition: "bottom center",
+        textfont: { color: "#3fb950", size: 9 },
+        hovertemplate: cycle.bots.map(p => `<b>${fmtDate(p.date)}</b><br>BOT: $${p.price.toLocaleString("en-US", { maximumFractionDigits: 2 })}<extra></extra>`),
+      });
+    }
+  }
+
+  return traces;
+}
+
+function buildLayout() {
+  const isLogLog = MODE === "loglog";
+  const { firstPriceDay, horizonDay } = buildData();
+
+  let xaxis;
+  if (isLogLog) {
+    const ticks = yearTicksForLogAxis(firstPriceDay, horizonDay);
+    xaxis = {
+      title: "Дата (log scale, дни от genesis " + CFG.genesis + ")",
+      type: "log",
+      range: [Math.log10(firstPriceDay), Math.log10(horizonDay)],
+      tickvals: ticks.tickvals,
+      ticktext: ticks.ticktext,
+      gridcolor: "#21262d",
+      zerolinecolor: "#30363d",
+      tickfont: { color: "#8b949e", size: 10 },
+      minor: { ticks: "inside", gridcolor: "#1a1f26" },
+    };
+  } else {
+    xaxis = {
+      title: "Дата",
+      type: "date",
+      range: [dateFromDays(firstPriceDay), dateFromDays(horizonDay)],
+      gridcolor: "#21262d",
+      zerolinecolor: "#30363d",
+      tickfont: { color: "#8b949e" },
+    };
+  }
+
+  return {
+    paper_bgcolor: "#0d1117",
+    plot_bgcolor: "#0d1117",
+    font: { color: "#e6edf3", family: "ui-monospace, SFMono-Regular, Menlo, monospace", size: 12 },
+    margin: { l: 70, r: 20, t: 20, b: 50 },
+    showlegend: true,
+    legend: {
+      orientation: "h",
+      x: 0, y: 1.06,
+      bgcolor: "rgba(22,27,34,0.6)",
+      bordercolor: "#30363d",
+      borderwidth: 1,
+    },
+    hovermode: "closest",
+    xaxis,
+    yaxis: {
+      title: "Цена " + CFG.symbol + " (USD, log)",
+      type: "log",
+      gridcolor: "#21262d",
+      zerolinecolor: "#30363d",
+      tickfont: { color: "#8b949e" },
+      tickformat: "$,",
+    },
   };
 }
 
 function render() {
-  if (!chart) return;
-  const d = buildSeriesData();
-  sPrice.setData(d.price);
-  sFair.setData(SHOW.fair ? d.fair : []);
-  sUpE.setData(SHOW.extremes ? d.upE : []);
-  sLowE.setData(SHOW.extremes ? d.lowE : []);
-  sUpQ.setData(SHOW.quantile ? d.upQ : []);
-  sLowQ.setData(SHOW.quantile ? d.lowQ : []);
-
-  if (SHOW.markers && SHOW.extremes) {
-    const markers = [];
-    for (const p of cycle.tops) markers.push({
-      time: asTime(p.date), position: "aboveBar", color: "#f85149", shape: "arrowDown",
-      text: "TOP $" + fmtUsd(p.price).replace("$", "")
-    });
-    for (const p of cycle.bottoms) markers.push({
-      time: asTime(p.date), position: "belowBar", color: "#3fb950", shape: "arrowUp",
-      text: "BOT $" + fmtUsd(p.price).replace("$", "")
-    });
-    markers.sort((a, b) => a.time - b.time);
-    sPrice.setMarkers(markers);
-  } else {
-    sPrice.setMarkers([]);
-  }
+  if (typeof Plotly === "undefined") return;
+  const ph = document.getElementById("ph");
+  if (ph) ph.remove();
+  Plotly.react("chart", buildTraces(), buildLayout(), {
+    responsive: true, displaylogo: false,
+    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+  });
   updateStats();
 }
 
 function updateStats() {
   const last = points[points.length - 1];
   const today = new Date();
-  const fairToday = fairValue(today);
-  const dev = last.price / fairValue(last.date) - 1;
-  const upE = resistanceAt(today);
-  const lowE = supportAt(today);
-  const pos = ((Math.log10(last.price) - Math.log10(lowE)) / (Math.log10(upE) - Math.log10(lowE))) * 100;
+  const dToday = daysSinceBasis(today);
+  const fv = fairAt(dToday);
+  const dev = last.price / fairAt(daysSinceBasis(last.date)) - 1;
+  const r = resistAt(dToday);
+  const s = supportAt(dToday);
+  const pos = ((Math.log10(last.price) - Math.log10(s)) / (Math.log10(r) - Math.log10(s))) * 100;
   document.getElementById("stat-price").textContent = fmtUsd(last.price);
-  document.getElementById("stat-fair").textContent = fmtUsd(fairToday);
+  document.getElementById("stat-fair").textContent = fmtUsd(fv);
   const devEl = document.getElementById("stat-dev");
   devEl.textContent = (dev >= 0 ? "+" : "") + (dev * 100).toFixed(1) + "%";
   devEl.className = "value " + (dev >= 0 ? "green" : "red");
@@ -442,20 +454,21 @@ function updateStats() {
   posEl.className = "value " + (pos > 80 ? "red" : pos < 20 ? "green" : "");
 }
 
-// =========== Loaders =================================================
-function loadLib() {
+// =========== Loaders ================================================
+function loadPlotly() {
   const CDNS = [
-    "https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js",
-    "https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js",
+    "https://cdn.plot.ly/plotly-2.35.2.min.js",
+    "https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js",
+    "https://unpkg.com/plotly.js-dist-min@2.35.2/plotly.min.js",
   ];
   return new Promise((resolve, reject) => {
     let i = 0;
     const tryNext = () => {
-      if (typeof LightweightCharts !== "undefined") return resolve();
+      if (typeof Plotly !== "undefined") return resolve();
       if (i >= CDNS.length) return reject(new Error("CDN недоступен"));
       const s = document.createElement("script");
       s.src = CDNS[i++]; s.async = true;
-      s.onload = () => typeof LightweightCharts !== "undefined" ? resolve() : tryNext();
+      s.onload = () => typeof Plotly !== "undefined" ? resolve() : tryNext();
       s.onerror = () => tryNext();
       document.head.appendChild(s);
     };
@@ -473,15 +486,14 @@ async function loadHistory() {
     if (!r.ok) throw new Error("HTTP " + r.status);
     const j = await r.json();
     const arr = j && j.Data && j.Data.Data;
-    if (!Array.isArray(arr) || arr.length === 0) throw new Error("empty payload");
+    if (!Array.isArray(arr) || arr.length === 0) throw new Error("empty");
     const fresh = arr.filter(x => x.close > 0).map(x => ({ date: new Date(x.time * 1000), price: x.close }));
-    if (fresh.length < 100) throw new Error("too few points: " + fresh.length);
+    if (fresh.length < 100) throw new Error("too few: " + fresh.length);
     points = fresh;
     dataSource = "CryptoCompare (daily, " + fresh.length + " pts)";
     status.textContent = "✓ Загружено " + fresh.length + " дневных точек.";
     status.className = "status-ok";
   } catch (e) {
-    console.warn("history fetch failed:", e);
     status.textContent = "Не удалось загрузить онлайн-историю (" + e.message + ").";
     status.className = "status-fail";
   }
@@ -501,52 +513,43 @@ async function fetchSpot() {
   } catch (e) {}
 }
 
-// =========== UI ======================================================
+// =========== UI =====================================================
 function bindUI() {
+  document.getElementById("x-mode").addEventListener("change", function () {
+    MODE = this.value; render();
+  });
   document.getElementById("btn-channels").addEventListener("click", function () {
     SHOW.extremes = !SHOW.extremes; this.classList.toggle("active", SHOW.extremes); render();
   });
   document.getElementById("btn-markers").addEventListener("click", function () {
     SHOW.markers = !SHOW.markers; this.classList.toggle("active", SHOW.markers); render();
   });
-  document.getElementById("btn-quantile").addEventListener("click", function () {
-    SHOW.quantile = !SHOW.quantile; this.classList.toggle("active", SHOW.quantile); render();
-  });
   document.getElementById("btn-fair").addEventListener("click", function () {
     SHOW.fair = !SHOW.fair; this.classList.toggle("active", SHOW.fair); render();
   });
-  document.getElementById("basis").addEventListener("change", function () {
-    basisDate = this.value === "genesis" ? GENESIS : FIRST_PRICE_DATE; recompute(); render();
-  });
-  document.getElementById("btn-fit").addEventListener("click", () => {
-    if (chart) chart.timeScale().fitContent();
+  document.getElementById("horizon").addEventListener("change", function () {
+    HORIZON_YEARS = parseInt(this.value, 10); render();
   });
 }
 
-// =========== Init ====================================================
+// =========== Init ===================================================
 (async function () {
   bindUI();
   recompute();
   document.getElementById("data-source").textContent = dataSource;
-  const ph = document.getElementById("placeholder");
-  try {
-    await loadLib();
-  } catch (e) {
-    ph.textContent = "Не удалось загрузить TradingView Lightweight Charts: " + e.message;
-    ph.classList.add("error");
+  try { await loadPlotly(); }
+  catch (e) {
+    const ph = document.getElementById("ph");
+    if (ph) { ph.textContent = "Не удалось загрузить Plotly: " + e.message; ph.classList.add("error"); }
     document.getElementById("status").textContent = "✗ библиотека не загружена";
     document.getElementById("status").className = "status-fail";
     return;
   }
-  initChart();
-  ph.style.display = "none";
   render();
-  if (chart) chart.timeScale().fitContent();
   await loadHistory();
   await fetchSpot();
   recompute();
   render();
-  if (chart) chart.timeScale().fitContent();
 })();
 </script>
 </body>
