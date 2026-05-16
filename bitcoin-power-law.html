@@ -529,15 +529,27 @@ function attachCrosshairLabel() {
     const priceStr = fmtUsd(yVal);
     const dToday = daysSinceBasis(date);
     const fv = fairAt(dToday);
+    const rv = resistAt(dToday);
+    const sv = supportAt(dToday);
     const dev = isFinite(fv) ? (yVal / fv - 1) * 100 : NaN;
+    // Положение цены курсора в канале support↔resistance (0%—на support, 100%—на resistance)
+    const pos = (isFinite(rv) && isFinite(sv) && rv > sv) ?
+      ((Math.log10(yVal) - Math.log10(sv)) / (Math.log10(rv) - Math.log10(sv))) * 100 : NaN;
+
     let html = `<b>${dateStr}</b> · <span class="p">${priceStr}</span>`;
+    if (isFinite(rv)) html += `<br><span style="color:var(--red)">Resistance:</span> ${fmtUsd(rv)}`;
     if (isFinite(fv)) {
-      html += `<br>Fair: ${fmtUsd(fv)}`;
+      html += `<br><span style="color:var(--accent)">Fair:</span> ${fmtUsd(fv)}`;
       if (isFinite(dev)) {
         const sign = dev >= 0 ? "+" : "";
         const cls = dev >= 0 ? "color:var(--green)" : "color:var(--red)";
         html += ` · <span style="${cls}">${sign}${dev.toFixed(1)}%</span>`;
       }
+    }
+    if (isFinite(sv)) html += `<br><span style="color:var(--green)">Support:</span> ${fmtUsd(sv)}`;
+    if (isFinite(pos)) {
+      const cls = pos > 80 ? "color:var(--red)" : pos < 20 ? "color:var(--green)" : "";
+      html += `<br><span style="color:var(--text-dim)">В канале:</span> <span style="${cls}">${pos.toFixed(0)}%</span>`;
     }
     label.innerHTML = html;
     label.style.display = "block";
