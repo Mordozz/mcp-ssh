@@ -51,7 +51,18 @@
   .controls button:hover, .controls select:hover { border-color: var(--accent); }
   .controls button.active { background: var(--accent); color: #000; border-color: var(--accent); }
   .controls .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
-  #chart { width: 100%; height: calc(100vh - 230px); min-height: 500px; }
+  #chart { width: 100%; height: calc(100vh - 230px); min-height: 500px; position: relative; }
+  #crosshair-label {
+    position: absolute; pointer-events: none; display: none;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 5px 9px; font-size: 12px;
+    color: var(--text); font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    line-height: 1.4;
+  }
+  #crosshair-label b { color: var(--blue); }
+  #crosshair-label .p { color: var(--accent); }
   #chart .placeholder {
     height: 100%; display: flex; align-items: center; justify-content: center;
     color: var(--text-dim); font-size: 14px; text-align: center; padding: 20px;
@@ -108,7 +119,7 @@
   <span id="status" class="status-loading">Инициализация…</span>
 </div>
 
-<div id="chart"><div class="placeholder" id="ph">Загружаем библиотеку графиков…</div></div>
+<div id="chart"><div class="placeholder" id="ph">Загружаем библиотеку графиков…</div><div id="crosshair-label"></div></div>
 
 <footer>
   <div>
@@ -375,6 +386,16 @@ function buildLayout() {
   const isLogLog = MODE === "loglog";
   const { firstPriceDay, horizonDay } = buildData();
 
+  // Общие настройки crosshair (пунктирные направляющие от курсора к осям)
+  const SPIKE = {
+    showspikes: true,
+    spikemode: "across",
+    spikesnap: "cursor",
+    spikecolor: "#58a6ff",
+    spikedash: "dash",
+    spikethickness: 1,
+  };
+
   let xaxis;
   if (isLogLog) {
     const ticks = yearTicksForLogAxis(firstPriceDay, horizonDay);
@@ -388,6 +409,7 @@ function buildLayout() {
       zerolinecolor: "#30363d",
       tickfont: { color: "#8b949e", size: 10 },
       minor: { ticks: "inside", gridcolor: "#1a1f26" },
+      ...SPIKE,
     };
   } else {
     xaxis = {
@@ -397,6 +419,7 @@ function buildLayout() {
       gridcolor: "#21262d",
       zerolinecolor: "#30363d",
       tickfont: { color: "#8b949e" },
+      ...SPIKE,
     };
   }
 
@@ -414,6 +437,8 @@ function buildLayout() {
       borderwidth: 1,
     },
     hovermode: "closest",
+    hoverdistance: 1,   // не "примагничивать" к точкам — crosshair следует за курсором
+    spikedistance: -1,  // спайки активны на всей плоскости
     xaxis,
     yaxis: {
       title: "Цена " + CFG.symbol + " (USD, log)",
@@ -422,6 +447,7 @@ function buildLayout() {
       zerolinecolor: "#30363d",
       tickfont: { color: "#8b949e" },
       tickformat: "$,",
+      ...SPIKE,
     },
   };
 }
@@ -434,7 +460,79 @@ function render() {
     responsive: true, displaylogo: false,
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   });
+  attachCrosshairLabel();
   updateStats();
+}
+
+// Плавающий лейбл "Дата · Цена · Fair" у курсора. Plotly сам рисует
+// пунктирные spike-линии до осей; мы лишь дополнительно показываем
+// человекочитаемую дату (особенно полезно в log-log режиме, где X = дни).
+let _crosshairBound = false;
+function attachCrosshairLabel() {
+  if (_crosshairBound) return;
+  _crosshairBound = true;
+  const gd = document.getElementById("chart");
+  const label = document.getElementById("crosshair-label");
+  if (!gd || !label) return;
+
+  function update(e) {
+    const fl = gd._fullLayout;
+    if (!fl || !fl.xaxis || !fl.yaxis) { label.style.display = "none"; return; }
+    const rect = gd.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const size = fl._size;  // {l, r, t, b, w, h}
+    if (!size) return;
+    const insideX = mx >= size.l && mx <= size.l + size.w;
+    const insideY = my >= size.t && my <= size.t + size.h;
+    if (!insideX || !insideY) { label.style.display = "none"; return; }
+
+    // Plotly p2d/p2c принимает координату относительно plot area
+    const xPix = mx - size.l;
+    const yPix = my - size.t;
+    let xVal, yVal;
+    try {
+      xVal = fl.xaxis.p2d(xPix);
+      yVal = fl.yaxis.p2d(yPix);
+    } catch (err) { label.style.display = "none"; return; }
+
+    let date;
+    if (MODE === "loglog") {
+      // xVal — количество дней от genesis (numeric)
+      date = dateFromDays(xVal);
+    } else {
+      // в дата-режиме xVal приходит как ms-таймстамп
+      date = new Date(xVal);
+    }
+    if (!isFinite(date.getTime())) { label.style.display = "none"; return; }
+
+    const dateStr = fmtDate(date);
+    const priceStr = fmtUsd(yVal);
+    const dToday = daysSinceBasis(date);
+    const fv = fairAt(dToday);
+    const dev = isFinite(fv) ? (yVal / fv - 1) * 100 : NaN;
+    let html = `<b>${dateStr}</b> · <span class="p">${priceStr}</span>`;
+    if (isFinite(fv)) {
+      html += `<br>Fair: ${fmtUsd(fv)}`;
+      if (isFinite(dev)) {
+        const sign = dev >= 0 ? "+" : "";
+        const cls = dev >= 0 ? "color:var(--green)" : "color:var(--red)";
+        html += ` · <span style="${cls}">${sign}${dev.toFixed(1)}%</span>`;
+      }
+    }
+    label.innerHTML = html;
+    label.style.display = "block";
+
+    // Размещаем рядом с курсором, не вылезая за края chart-контейнера
+    const lw = label.offsetWidth, lh = label.offsetHeight;
+    let lx = mx + 14, ly = my + 14;
+    if (lx + lw > rect.width - 4) lx = mx - lw - 14;
+    if (ly + lh > rect.height - 4) ly = my - lh - 14;
+    label.style.left = lx + "px";
+    label.style.top = ly + "px";
+  }
+  gd.addEventListener("mousemove", update);
+  gd.addEventListener("mouseleave", () => { label.style.display = "none"; });
 }
 
 function updateStats() {
