@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Bitcoin Power Law Regression — Log/Log</title>
+<title>S&P 500 Long-Term Trend (Exponential, semi-log)</title>
 <style>
   :root {
     --bg: #0d1117;
@@ -12,7 +12,7 @@
     --border: #30363d;
     --text: #e6edf3;
     --text-dim: #8b949e;
-    --accent: #f7931a;
+    --accent: #00d4aa;
     --green: #3fb950;
     --red: #f85149;
     --blue: #58a6ff;
@@ -20,8 +20,7 @@
   }
   * { box-sizing: border-box; }
   html, body {
-    margin: 0; padding: 0;
-    background: var(--bg); color: var(--text);
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     min-height: 100vh;
   }
@@ -44,9 +43,9 @@
   }
   .controls label { font-size: 12px; color: var(--text-dim); display: inline-flex; align-items: center; gap: 6px; user-select: none; }
   .controls button, .controls select {
-    background: var(--panel-2); color: var(--text);
-    border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px;
-    cursor: pointer; font-size: 12px; transition: background 0.15s, border-color 0.15s;
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    transition: background 0.15s, border-color 0.15s;
   }
   .controls button:hover, .controls select:hover { border-color: var(--accent); }
   .controls button.active { background: var(--accent); color: #000; border-color: var(--accent); }
@@ -58,8 +57,7 @@
     border-radius: 4px; padding: 5px 9px; font-size: 12px;
     color: var(--text); font-variant-numeric: tabular-nums;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-    line-height: 1.4;
+    z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,0.5); line-height: 1.4;
   }
   #crosshair-label b { color: var(--blue); }
   #crosshair-label .p { color: var(--accent); }
@@ -84,9 +82,9 @@
 <body>
 
 <header>
-  <h1>Bitcoin Power Law Regression <small>log–log регрессия · справедливая стоимость и канал по цикловым экстремумам</small></h1>
+  <h1>S&amp;P 500 Long-Term Trend <small>экспоненциальная модель · semi-log · CAGR-канал по цикловым экстремумам</small></h1>
   <div class="stats">
-    <div class="stat"><div class="label">Цена BTC</div><div id="stat-price" class="value accent">—</div></div>
+    <div class="stat"><div class="label">Цена SPX</div><div id="stat-price" class="value accent">—</div></div>
     <div class="stat"><div class="label">Fair Value</div><div id="stat-fair" class="value">—</div></div>
     <div class="stat"><div class="label">Отклонение</div><div id="stat-dev" class="value">—</div></div>
     <div class="stat"><div class="label">Положение в канале</div><div id="stat-pos" class="value">—</div></div>
@@ -94,10 +92,13 @@
 </header>
 
 <div class="controls">
-  <label>Вид:
-    <select id="x-mode">
-      <option value="loglog" selected>log X · log Y (true power law)</option>
-      <option value="date">Дата X · log Y</option>
+  <label>Период от:
+    <select id="start-year">
+      <option value="1871" selected>1871 (Shiller, полная история)</option>
+      <option value="1928">1928 (S&amp;P Composite)</option>
+      <option value="1957">1957 (модерн S&amp;P 500)</option>
+      <option value="1980">1980</option>
+      <option value="2000">2000</option>
     </select>
   </label>
   <div class="sep"></div>
@@ -107,14 +108,14 @@
   <div class="sep"></div>
   <label>Прогноз вперёд:
     <select id="horizon">
-      <option value="3">3 года</option>
-      <option value="5" selected>5 лет</option>
-      <option value="10">10 лет</option>
+      <option value="5">5 лет</option>
+      <option value="10" selected>10 лет</option>
       <option value="15">15 лет</option>
+      <option value="20">20 лет</option>
     </select>
   </label>
   <div class="sep"></div>
-  <span class="cross-link">→ <a href="ethereum-power-law.html">Ethereum</a> · <a href="sp500-trend.html">S&P 500</a></span>
+  <span class="cross-link">→ <a href="bitcoin-power-law.html">Bitcoin</a> · <a href="ethereum-power-law.html">Ethereum</a></span>
   <div class="sep"></div>
   <span id="status" class="status-loading">Инициализация…</span>
 </div>
@@ -123,46 +124,48 @@
 
 <footer>
   <div>
-    Модель: <span class="formula">log₁₀(price) = a + b · log₁₀(дни от genesis)</span>
+    Модель: <span class="formula">log₁₀(price) = a + b · years</span>
     · <span id="model-coef">a = —, b = —</span>
   </div>
-  <div>Источник: <span id="data-source">—</span></div>
+  <div>Источник: <span id="data-source">—</span> (Shiller / DataHub)</div>
 </footer>
 
 <script>
 "use strict";
 
 const CFG = {
-  symbol: "BTC",
-  name: "Bitcoin",
-  accent: "#f7931a",
-  genesis: "2009-01-03",
-  firstPrice: "2010-07-17",
+  symbol: "SPX",
+  name: "S&P 500",
+  accent: "#00d4aa",
+  // Базовая дата = первая точка в датасете Shiller
+  baseDate: "1871-01-01",
+  // Минимальный fallback — каждые 10 лет, в случае если API недоступен
   embedded: [
-    ["2010-07-17", 0.05], ["2010-12-31", 0.30], ["2011-06-30", 16.0],
-    ["2011-12-31", 4.7], ["2012-12-31", 13.5], ["2013-12-31", 758.0],
-    ["2014-12-31", 320.0], ["2015-12-31", 430.0], ["2016-12-31", 963.0],
-    ["2017-12-31", 14156.0], ["2018-12-31", 3742.0], ["2019-12-31", 7193.0],
-    ["2020-12-31", 28990.0], ["2021-12-31", 46220.0], ["2022-12-31", 16550.0],
-    ["2023-12-31", 42270.0], ["2024-12-31", 93420.0], ["2025-04-30", 94210.0]
+    ["1871-01-01", 4.44], ["1881-01-01", 5.42], ["1891-01-01", 4.95],
+    ["1901-01-01", 8.04], ["1911-01-01", 9.37], ["1921-01-01", 7.11],
+    ["1931-01-01", 15.98], ["1941-01-01", 10.55], ["1951-01-01", 21.21],
+    ["1961-01-01", 59.72], ["1971-01-01", 95.88], ["1981-01-01", 132.97],
+    ["1991-01-01", 325.49], ["2001-01-01", 1335.63], ["2011-01-01", 1282.62],
+    ["2021-01-01", 3793.75], ["2025-04-01", 5500.00]
   ],
 };
 document.documentElement.style.setProperty("--accent", CFG.accent);
 
-const GENESIS = new Date(CFG.genesis + "T00:00:00Z");
-const FIRST_PRICE_DATE = new Date(CFG.firstPrice + "T00:00:00Z");
+const BASE = new Date(CFG.baseDate + "T00:00:00Z");
 const MS_PER_DAY = 86400000;
-const basisDate = GENESIS; // фит всегда от genesis
-const daysSinceBasis = d => (d.getTime() - basisDate.getTime()) / MS_PER_DAY;
-const dateFromDays = days => new Date(basisDate.getTime() + days * MS_PER_DAY);
+const DAYS_PER_YEAR = 365.25;
+// Время в годах от базовой даты (для экспоненциальной модели)
+const yearsSinceBase = d => (d.getTime() - BASE.getTime()) / (MS_PER_DAY * DAYS_PER_YEAR);
+const dateFromYears = yr => new Date(BASE.getTime() + yr * MS_PER_DAY * DAYS_PER_YEAR);
 
-// =========== OLS power law =========================================
-function fitOLS(pts) {
+// =========== OLS экспоненциальной модели =============================
+// log10(price) = a + b·years.  Отличие от крипты: x = годы, а НЕ log10(дни).
+function fitExp(pts) {
   const xs = [], ys = [];
   for (const p of pts) {
-    const d = daysSinceBasis(p.date);
-    if (d <= 0 || p.price <= 0) continue;
-    xs.push(Math.log10(d));
+    const yr = yearsSinceBase(p.date);
+    if (p.price <= 0) continue;
+    xs.push(yr);
     ys.push(Math.log10(p.price));
   }
   const n = xs.length;
@@ -170,19 +173,18 @@ function fitOLS(pts) {
   const my = ys.reduce((a, b) => a + b, 0) / n;
   let num = 0, den = 0;
   for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
-  const b = num / den;
-  const a = my - b * mx;
+  const b = num / den, a = my - b * mx;
   let ssRes = 0, ssTot = 0;
   for (let i = 0; i < n; i++) {
     const r = ys[i] - (a + b * xs[i]);
     ssRes += r * r;
     ssTot += (ys[i] - my) ** 2;
   }
-  return { a, b, r2: 1 - ssRes / ssTot, n };
+  return { a, b, r2: 1 - ssRes / ssTot, n, cagr: Math.pow(10, b) - 1 };
 }
 
-// Цикловые экстремумы: локальный max/min в окне ±W дней.
-const CYCLE_W = 365;
+// Цикловые экстремумы: окно ±W дней, как для крипты, но шире (730 дней)
+const CYCLE_W = 730;
 function detectCycleExtremes(pts, W) {
   const tops = [], bots = [];
   const n = pts.length;
@@ -204,51 +206,54 @@ function detectCycleExtremes(pts, W) {
   return { tops, bots };
 }
 
-// =========== State ==================================================
-let points = CFG.embedded.map(([d, p]) => ({ date: new Date(d + "T00:00:00Z"), price: p }));
-let dataSource = "embedded (" + points.length + " pts)";
+// =========== State ===================================================
+let pointsRaw = CFG.embedded.map(([d, p]) => ({ date: new Date(d + "T00:00:00Z"), price: p }));
+let points = pointsRaw;            // обрезанная по startYear выборка
+let dataSource = "embedded (" + pointsRaw.length + " pts)";
 let model = null, cycle = { tops: [], bots: [] }, resistFit = null, supportFit = null;
 
 const SHOW = { extremes: true, markers: true, fair: true };
-let MODE = "loglog";
-let HORIZON_YEARS = 5;
+let HORIZON_YEARS = 10;
+let START_YEAR = 1871;
+
+function applyStartYear() {
+  const cutoff = new Date(Date.UTC(START_YEAR, 0, 1));
+  points = pointsRaw.filter(p => p.date >= cutoff);
+}
 
 function recompute() {
-  model = fitOLS(points);
+  applyStartYear();
+  if (points.length < 3) { model = null; return; }
+  model = fitExp(points);
   cycle = detectCycleExtremes(points, CYCLE_W);
-  resistFit = cycle.tops.length >= 3 ? fitOLS(cycle.tops) : null;
-  supportFit = cycle.bots.length >= 3 ? fitOLS(cycle.bots) : null;
-  let txt = `central: a=${model.a.toFixed(3)}, b=${model.b.toFixed(3)}, R²=${model.r2.toFixed(3)}, n=${model.n}`;
-  if (resistFit) txt += ` · resistance: a=${resistFit.a.toFixed(2)}, b=${resistFit.b.toFixed(2)} (n=${cycle.tops.length})`;
-  if (supportFit) txt += ` · support: a=${supportFit.a.toFixed(2)}, b=${supportFit.b.toFixed(2)} (n=${cycle.bots.length})`;
+  resistFit = cycle.tops.length >= 3 ? fitExp(cycle.tops) : null;
+  supportFit = cycle.bots.length >= 3 ? fitExp(cycle.bots) : null;
+  let txt = `central: CAGR=${(model.cagr*100).toFixed(2)}% (b=${model.b.toFixed(5)}, a=${model.a.toFixed(3)}), R²=${model.r2.toFixed(3)}, n=${model.n}`;
+  if (resistFit) txt += ` · resistance: CAGR=${(resistFit.cagr*100).toFixed(2)}% (n=${cycle.tops.length})`;
+  if (supportFit) txt += ` · support: CAGR=${(supportFit.cagr*100).toFixed(2)}% (n=${cycle.bots.length})`;
   document.getElementById("model-coef").textContent = txt;
 }
 
-function priceAtDay(fit, days) {
-  if (!fit || days <= 0) return NaN;
-  return Math.pow(10, fit.a + fit.b * Math.log10(days));
+function priceAt(fit, years) {
+  if (!fit) return NaN;
+  return Math.pow(10, fit.a + fit.b * years);
 }
-const fairAt = days => priceAtDay(model, days);
-// Из-за "diminishing returns" наклон resistance < наклона central,
-// поэтому при экстраполяции прямые пересекаются и формально resistance
-// уходит под fair. Это логически бессмысленно — потолок не может быть
-// ниже центра. Делаем асимптоту: resist >= fair, support <= fair.
-const resistAt = days => {
-  const r = priceAtDay(resistFit, days);
-  const f = fairAt(days);
+const fairAt = yr => priceAt(model, yr);
+// resistance >= fair, support <= fair (асимптота при пересечении линий)
+const resistAt = yr => {
+  const r = priceAt(resistFit, yr), f = fairAt(yr);
   if (!isFinite(r)) return f;
   if (!isFinite(f)) return r;
   return Math.max(r, f);
 };
-const supportAt = days => {
-  const s = priceAtDay(supportFit, days);
-  const f = fairAt(days);
+const supportAt = yr => {
+  const s = priceAt(supportFit, yr), f = fairAt(yr);
   if (!isFinite(s)) return f;
   if (!isFinite(f)) return s;
   return Math.min(s, f);
 };
 
-// =========== Date / day label helpers ==============================
+// =========== Helpers ================================================
 function fmtUsd(p) {
   if (!isFinite(p)) return "—";
   if (p >= 1000) return "$" + Math.round(p).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -262,114 +267,74 @@ function fmtDate(d) {
   return `${y}-${m}-${dd}`;
 }
 
-// Подписи по годам для логарифмической оси X (значения — дни, текст — год).
-function yearTicksForLogAxis(fromDay, toDay) {
-  const tickvals = [], ticktext = [];
-  const firstYear = dateFromDays(fromDay).getUTCFullYear();
-  const lastYear = dateFromDays(toDay).getUTCFullYear();
-  for (let y = firstYear; y <= lastYear; y++) {
-    const d = new Date(Date.UTC(y, 0, 1));
-    const days = daysSinceBasis(d);
-    if (days >= fromDay && days <= toDay) {
-      tickvals.push(days);
-      ticktext.push(String(y));
-    }
-  }
-  return { tickvals, ticktext };
-}
-
-// =========== Build series / layout =================================
-function buildData() {
-  const lastPriceDay = daysSinceBasis(points[points.length - 1].date);
-  const horizonDay = lastPriceDay + HORIZON_YEARS * 365;
-  const firstPriceDay = Math.max(1, daysSinceBasis(points[0].date));
-
-  // Сетка регрессионных линий: 200 точек логарифмически распределённых,
-  // чтобы кривая была гладкой и в log-log, и в date-режиме.
-  const grid = [];
-  const logFrom = Math.log10(firstPriceDay);
-  const logTo = Math.log10(horizonDay);
-  const N = 240;
-  for (let i = 0; i <= N; i++) {
-    const lg = logFrom + (logTo - logFrom) * (i / N);
-    grid.push(Math.pow(10, lg));
-  }
-
-  return {
-    grid,
-    firstPriceDay, lastPriceDay, horizonDay,
-  };
+// =========== Build traces / layout ==================================
+function buildSpan() {
+  const firstDate = points[0].date;
+  const lastDate = points[points.length - 1].date;
+  const horizon = new Date(lastDate.getTime() + HORIZON_YEARS * 365.25 * MS_PER_DAY);
+  return { firstDate, lastDate, horizon };
 }
 
 function buildTraces() {
-  const { grid } = buildData();
-  const isLogLog = MODE === "loglog";
+  const { firstDate, horizon } = buildSpan();
+  // регрессия на сетке по 30 дней
+  const grid = [];
+  for (let t = firstDate.getTime(); t <= horizon.getTime(); t += 30 * MS_PER_DAY) grid.push(new Date(t));
+  const xs = grid.map(d => d);
+  const ys = grid.map(d => yearsSinceBase(d));
+  const fair = ys.map(fairAt);
+  const resist = ys.map(resistAt);
+  const support = ys.map(supportAt);
 
-  const xOf = (days) => isLogLog ? days : dateFromDays(days);
-  const xPoints = points.map(p => xOf(daysSinceBasis(p.date)));
-  const yPoints = points.map(p => p.price);
-
-  const xGrid = grid.map(xOf);
-  const fair = grid.map(fairAt);
-  const resist = grid.map(resistAt);
-  const support = grid.map(supportAt);
-
-  // Кастомные метки для tooltip: формат даты + цена + отклонение от fair
-  const customPrices = points.map((p, i) => {
-    const d = daysSinceBasis(p.date);
-    const fv = fairAt(d);
+  const xPts = points.map(p => p.date);
+  const yPts = points.map(p => p.price);
+  const customPrices = points.map(p => {
+    const yr = yearsSinceBase(p.date);
+    const fv = fairAt(yr);
     const dev = (p.price / fv - 1) * 100;
     return [fmtDate(p.date), p.price, dev];
   });
 
   const traces = [];
-
-  // Канал: support и resistance с заливкой между ними
   if (SHOW.extremes && resistFit && supportFit) {
     traces.push({
-      x: xGrid, y: resist,
-      name: `Resistance (b=${resistFit.b.toFixed(2)})`,
+      x: xs, y: resist,
+      name: `Resistance (CAGR ${(resistFit.cagr*100).toFixed(1)}%)`,
       mode: "lines",
       line: { color: "#f85149", width: 1.5, dash: "dot" },
-      hovertemplate: "Resistance: $%{y:,.0f}<extra></extra>",
+      hovertemplate: "Resist: $%{y:,.0f}<extra></extra>",
     });
     traces.push({
-      x: xGrid, y: support,
-      name: `Support (b=${supportFit.b.toFixed(2)})`,
+      x: xs, y: support,
+      name: `Support (CAGR ${(supportFit.cagr*100).toFixed(1)}%)`,
       mode: "lines",
       line: { color: "#3fb950", width: 1.5, dash: "dot" },
       fill: "tonexty",
-      fillcolor: "rgba(247, 147, 26, 0.04)",
+      fillcolor: "rgba(0, 212, 170, 0.04)",
       hovertemplate: "Support: $%{y:,.0f}<extra></extra>",
     });
   }
-
-  // Fair Value
   if (SHOW.fair) {
     traces.push({
-      x: xGrid, y: fair,
-      name: `Fair Value (b=${model.b.toFixed(2)})`,
+      x: xs, y: fair,
+      name: `Fair Value (CAGR ${(model.cagr*100).toFixed(1)}%)`,
       mode: "lines",
       line: { color: CFG.accent, width: 2.5 },
       hovertemplate: "Fair: $%{y:,.2f}<extra></extra>",
     });
   }
-
-  // Точки цены
   traces.push({
-    x: xPoints, y: yPoints,
+    x: xPts, y: yPts,
     name: CFG.symbol + " цена",
     mode: "lines",
     line: { color: "#58a6ff", width: 1 },
     customdata: customPrices,
     hovertemplate: "<b>%{customdata[0]}</b><br>" + CFG.symbol + ": $%{customdata[1]:,.2f}<br>Откл. от fair: %{customdata[2]:+.1f}%<extra></extra>",
   });
-
-  // Маркеры цикловых экстремумов
   if (SHOW.markers) {
     if (cycle.tops.length) {
       traces.push({
-        x: cycle.tops.map(p => xOf(daysSinceBasis(p.date))),
+        x: cycle.tops.map(p => p.date),
         y: cycle.tops.map(p => p.price),
         name: "Цикловые пики",
         mode: "markers+text",
@@ -382,7 +347,7 @@ function buildTraces() {
     }
     if (cycle.bots.length) {
       traces.push({
-        x: cycle.bots.map(p => xOf(daysSinceBasis(p.date))),
+        x: cycle.bots.map(p => p.date),
         y: cycle.bots.map(p => p.price),
         name: "Цикловые впадины",
         mode: "markers+text",
@@ -394,76 +359,38 @@ function buildTraces() {
       });
     }
   }
-
   return traces;
 }
 
 function buildLayout() {
-  const isLogLog = MODE === "loglog";
-  const { firstPriceDay, horizonDay } = buildData();
-
-  // Общие настройки crosshair (пунктирные направляющие от курсора к осям)
+  const { firstDate, horizon } = buildSpan();
   const SPIKE = {
-    showspikes: true,
-    spikemode: "across",
-    spikesnap: "cursor",
-    spikecolor: "#58a6ff",
-    spikedash: "dash",
-    spikethickness: 1,
+    showspikes: true, spikemode: "across", spikesnap: "cursor",
+    spikecolor: "#58a6ff", spikedash: "dash", spikethickness: 1,
   };
-
-  let xaxis;
-  if (isLogLog) {
-    const ticks = yearTicksForLogAxis(firstPriceDay, horizonDay);
-    xaxis = {
-      title: "Дата (log scale, дни от genesis " + CFG.genesis + ")",
-      type: "log",
-      range: [Math.log10(firstPriceDay), Math.log10(horizonDay)],
-      tickvals: ticks.tickvals,
-      ticktext: ticks.ticktext,
-      gridcolor: "#21262d",
-      zerolinecolor: "#30363d",
-      tickfont: { color: "#8b949e", size: 10 },
-      minor: { ticks: "inside", gridcolor: "#1a1f26" },
-      ...SPIKE,
-    };
-  } else {
-    xaxis = {
-      title: "Дата",
-      type: "date",
-      range: [dateFromDays(firstPriceDay), dateFromDays(horizonDay)],
-      gridcolor: "#21262d",
-      zerolinecolor: "#30363d",
-      tickfont: { color: "#8b949e" },
-      ...SPIKE,
-    };
-  }
-
   return {
     paper_bgcolor: "#0d1117",
     plot_bgcolor: "#0d1117",
     font: { color: "#e6edf3", family: "ui-monospace, SFMono-Regular, Menlo, monospace", size: 12 },
     margin: { l: 70, r: 20, t: 20, b: 50 },
     showlegend: true,
-    legend: {
-      orientation: "h",
-      x: 0, y: 1.06,
-      bgcolor: "rgba(22,27,34,0.6)",
-      bordercolor: "#30363d",
-      borderwidth: 1,
-    },
+    legend: { orientation: "h", x: 0, y: 1.06, bgcolor: "rgba(22,27,34,0.6)", bordercolor: "#30363d", borderwidth: 1 },
     hovermode: "closest",
-    hoverdistance: 1,   // не "примагничивать" к точкам — crosshair следует за курсором
-    spikedistance: -1,  // спайки активны на всей плоскости
-    dragmode: "pan",    // левая кнопка — панорама графика; колесо — зум
-    xaxis,
+    hoverdistance: 1,
+    spikedistance: -1,
+    dragmode: "pan",
+    xaxis: {
+      title: "Дата", type: "date",
+      range: [firstDate, horizon],
+      gridcolor: "#21262d", zerolinecolor: "#30363d",
+      tickfont: { color: "#8b949e" },
+      ...SPIKE,
+    },
     yaxis: {
       title: "Цена " + CFG.symbol + " (USD, log)",
       type: "log",
-      gridcolor: "#21262d",
-      zerolinecolor: "#30363d",
-      tickfont: { color: "#8b949e" },
-      tickformat: "$,",
+      gridcolor: "#21262d", zerolinecolor: "#30363d",
+      tickfont: { color: "#8b949e" }, tickformat: "$,",
       ...SPIKE,
     },
   };
@@ -473,19 +400,16 @@ function render() {
   if (typeof Plotly === "undefined") return;
   const ph = document.getElementById("ph");
   if (ph) ph.remove();
+  if (!model) return;
   Plotly.react("chart", buildTraces(), buildLayout(), {
     responsive: true, displaylogo: false,
-    scrollZoom: true,   // колесо мыши — зум
-    doubleClick: "reset",
+    scrollZoom: true, doubleClick: "reset",
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   });
   attachCrosshairLabel();
   updateStats();
 }
 
-// Плавающий лейбл "Дата · Цена · Fair" у курсора. Plotly сам рисует
-// пунктирные spike-линии до осей; мы лишь дополнительно показываем
-// человекочитаемую дату (особенно полезно в log-log режиме, где X = дни).
 let _crosshairBound = false;
 function attachCrosshairLabel() {
   if (_crosshairBound) return;
@@ -493,57 +417,35 @@ function attachCrosshairLabel() {
   const gd = document.getElementById("chart");
   const label = document.getElementById("crosshair-label");
   if (!gd || !label) return;
-
   function update(e) {
     const fl = gd._fullLayout;
     if (!fl || !fl.xaxis || !fl.yaxis) { label.style.display = "none"; return; }
     const rect = gd.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const size = fl._size;  // {l, r, t, b, w, h}
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const size = fl._size;
     if (!size) return;
-    const insideX = mx >= size.l && mx <= size.l + size.w;
-    const insideY = my >= size.t && my <= size.t + size.h;
-    if (!insideX || !insideY) { label.style.display = "none"; return; }
-
-    // Plotly p2d/p2c принимает координату относительно plot area
-    const xPix = mx - size.l;
-    const yPix = my - size.t;
+    if (mx < size.l || mx > size.l + size.w || my < size.t || my > size.t + size.h) {
+      label.style.display = "none"; return;
+    }
     let xVal, yVal;
     try {
-      xVal = fl.xaxis.p2d(xPix);
-      yVal = fl.yaxis.p2d(yPix);
+      xVal = fl.xaxis.p2d(mx - size.l);
+      yVal = fl.yaxis.p2d(my - size.t);
     } catch (err) { label.style.display = "none"; return; }
-
-    let date;
-    if (MODE === "loglog") {
-      // xVal — количество дней от genesis (numeric)
-      date = dateFromDays(xVal);
-    } else {
-      // в дата-режиме xVal приходит как ms-таймстамп
-      date = new Date(xVal);
-    }
+    const date = new Date(xVal);
     if (!isFinite(date.getTime())) { label.style.display = "none"; return; }
-
-    const dateStr = fmtDate(date);
-    const priceStr = fmtUsd(yVal);
-    const dToday = daysSinceBasis(date);
-    const fv = fairAt(dToday);
-    const rv = resistAt(dToday);
-    const sv = supportAt(dToday);
+    const yr = yearsSinceBase(date);
+    const fv = fairAt(yr), rv = resistAt(yr), sv = supportAt(yr);
     const dev = isFinite(fv) ? (yVal / fv - 1) * 100 : NaN;
-    // Положение цены курсора в канале support↔resistance (0%—на support, 100%—на resistance)
     const pos = (isFinite(rv) && isFinite(sv) && rv > sv) ?
       ((Math.log10(yVal) - Math.log10(sv)) / (Math.log10(rv) - Math.log10(sv))) * 100 : NaN;
-
-    let html = `<b>${dateStr}</b> · <span class="p">${priceStr}</span>`;
+    let html = `<b>${fmtDate(date)}</b> · <span class="p">${fmtUsd(yVal)}</span>`;
     if (isFinite(rv)) html += `<br><span style="color:var(--red)">Resistance:</span> ${fmtUsd(rv)}`;
     if (isFinite(fv)) {
       html += `<br><span style="color:var(--accent)">Fair:</span> ${fmtUsd(fv)}`;
       if (isFinite(dev)) {
-        const sign = dev >= 0 ? "+" : "";
         const cls = dev >= 0 ? "color:var(--green)" : "color:var(--red)";
-        html += ` · <span style="${cls}">${sign}${dev.toFixed(1)}%</span>`;
+        html += ` · <span style="${cls}">${dev >= 0 ? "+" : ""}${dev.toFixed(1)}%</span>`;
       }
     }
     if (isFinite(sv)) html += `<br><span style="color:var(--green)">Support:</span> ${fmtUsd(sv)}`;
@@ -553,30 +455,27 @@ function attachCrosshairLabel() {
     }
     label.innerHTML = html;
     label.style.display = "block";
-
-    // Размещаем рядом с курсором, не вылезая за края chart-контейнера
     const lw = label.offsetWidth, lh = label.offsetHeight;
     let lx = mx + 14, ly = my + 14;
     if (lx + lw > rect.width - 4) lx = mx - lw - 14;
     if (ly + lh > rect.height - 4) ly = my - lh - 14;
-    label.style.left = lx + "px";
-    label.style.top = ly + "px";
+    label.style.left = lx + "px"; label.style.top = ly + "px";
   }
   gd.addEventListener("mousemove", update);
   gd.addEventListener("mouseleave", () => { label.style.display = "none"; });
 }
 
 function updateStats() {
+  if (!model) return;
   const last = points[points.length - 1];
   const today = new Date();
-  const dToday = daysSinceBasis(today);
-  const fv = fairAt(dToday);
-  const dev = last.price / fairAt(daysSinceBasis(last.date)) - 1;
-  const r = resistAt(dToday);
-  const s = supportAt(dToday);
+  const yrToday = yearsSinceBase(today);
+  const fairToday = fairAt(yrToday);
+  const dev = last.price / fairAt(yearsSinceBase(last.date)) - 1;
+  const r = resistAt(yrToday), s = supportAt(yrToday);
   const pos = ((Math.log10(last.price) - Math.log10(s)) / (Math.log10(r) - Math.log10(s))) * 100;
   document.getElementById("stat-price").textContent = fmtUsd(last.price);
-  document.getElementById("stat-fair").textContent = fmtUsd(fv);
+  document.getElementById("stat-fair").textContent = fmtUsd(fairToday);
   const devEl = document.getElementById("stat-dev");
   devEl.textContent = (dev >= 0 ? "+" : "") + (dev * 100).toFixed(1) + "%";
   devEl.className = "value " + (dev >= 0 ? "green" : "red");
@@ -585,7 +484,7 @@ function updateStats() {
   posEl.className = "value " + (pos > 80 ? "red" : pos < 20 ? "green" : "");
 }
 
-// =========== Loaders ================================================
+// =========== Loaders =================================================
 function loadPlotly() {
   const CDNS = [
     "https://cdn.plot.ly/plotly-2.35.2.min.js",
@@ -609,20 +508,30 @@ function loadPlotly() {
 
 async function loadHistory() {
   const status = document.getElementById("status");
-  status.textContent = "Грузим полную ежедневную историю из CryptoCompare…";
+  status.textContent = "Грузим месячную историю S&P 500 (Shiller, с 1871)…";
   status.className = "status-loading";
   try {
-    const url = `https://min-api.cryptocompare.com/data/v2/histoday?fsym=${CFG.symbol}&tsym=USD&allData=true`;
-    const r = await fetch(url, { cache: "no-store" });
+    // Shiller-агрегат с 1871 по текущий месяц. GitHub-mirror datahub/s-and-p-500
+    // отдаёт тот же CSV что и DataHub, но с открытым CORS.
+    const r = await fetch("https://raw.githubusercontent.com/datasets/s-and-p-500/main/data/data.csv", { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
-    const j = await r.json();
-    const arr = j && j.Data && j.Data.Data;
-    if (!Array.isArray(arr) || arr.length === 0) throw new Error("empty");
-    const fresh = arr.filter(x => x.close > 0).map(x => ({ date: new Date(x.time * 1000), price: x.close }));
+    const text = await r.text();
+    const lines = text.trim().split(/\r?\n/);
+    const head = lines.shift().split(",");
+    const iDate = head.indexOf("Date");
+    const iPrice = head.indexOf("SP500");
+    if (iDate < 0 || iPrice < 0) throw new Error("CSV без нужных колонок");
+    const fresh = [];
+    for (const line of lines) {
+      const cols = line.split(",");
+      const d = cols[iDate];
+      const p = parseFloat(cols[iPrice]);
+      if (d && p > 0) fresh.push({ date: new Date(d + "T00:00:00Z"), price: p });
+    }
     if (fresh.length < 100) throw new Error("too few: " + fresh.length);
-    points = fresh;
-    dataSource = "CryptoCompare (daily, " + fresh.length + " pts)";
-    status.textContent = "✓ Загружено " + fresh.length + " дневных точек.";
+    pointsRaw = fresh;
+    dataSource = "Shiller / DataHub (monthly, " + fresh.length + " pts)";
+    status.textContent = "✓ " + fresh.length + " месячных точек, " + fresh[0].date.toISOString().slice(0,7) + " → " + fresh[fresh.length-1].date.toISOString().slice(0,7);
     status.className = "status-ok";
   } catch (e) {
     status.textContent = "Не удалось загрузить онлайн-историю (" + e.message + ").";
@@ -630,24 +539,12 @@ async function loadHistory() {
   }
   document.getElementById("data-source").textContent = dataSource;
 }
-async function fetchSpot() {
-  try {
-    const r = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${CFG.symbol}&tsyms=USD`, { cache: "no-store" });
-    if (!r.ok) return;
-    const j = await r.json();
-    if (j && j.USD > 0) {
-      const today = new Date(); today.setUTCHours(0, 0, 0, 0);
-      const last = points[points.length - 1];
-      if ((today - last.date) / MS_PER_DAY > 0.5) points.push({ date: today, price: j.USD });
-      else points[points.length - 1] = { date: today, price: j.USD };
-    }
-  } catch (e) {}
-}
 
 // =========== UI =====================================================
 function bindUI() {
-  document.getElementById("x-mode").addEventListener("change", function () {
-    MODE = this.value; render();
+  document.getElementById("start-year").addEventListener("change", function () {
+    START_YEAR = parseInt(this.value, 10);
+    recompute(); render();
   });
   document.getElementById("btn-channels").addEventListener("click", function () {
     SHOW.extremes = !SHOW.extremes; this.classList.toggle("active", SHOW.extremes); render();
@@ -678,7 +575,6 @@ function bindUI() {
   }
   render();
   await loadHistory();
-  await fetchSpot();
   recompute();
   render();
 })();
