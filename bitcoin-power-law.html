@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bitcoin Power Law Regression — Log/Log</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2330;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #f7931a;
+    --green: #3fb950;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --yellow: #d29922;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 24px;
+    background: var(--panel);
+  }
+  header h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.3px;
+  }
+  header h1 small {
+    color: var(--text-dim);
+    font-weight: 400;
+    margin-left: 8px;
+  }
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-left: auto;
+  }
+  .stat {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    min-width: 130px;
+  }
+  .stat .label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .stat .value {
+    font-size: 17px;
+    font-weight: 600;
+    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .value.green { color: var(--green); }
+  .stat .value.red { color: var(--red); }
+  .stat .value.accent { color: var(--accent); }
+
+  .controls {
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    background: var(--panel);
+  }
+  .controls label {
+    font-size: 12px;
+    color: var(--text-dim);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+  }
+  .controls button, .controls select {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .controls button:hover, .controls select:hover { border-color: var(--accent); }
+  .controls button.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .controls .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+
+  #chart { width: 100%; height: calc(100vh - 220px); min-height: 500px; }
+
+  footer {
+    padding: 10px 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+    background: var(--panel);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .formula {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--blue);
+  }
+  .status-loading { color: var(--yellow); }
+  .status-ok { color: var(--green); }
+  .status-fail { color: var(--red); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Bitcoin Power Law Regression <small>log–log модель · справедливая стоимость и канал по экстремумам</small></h1>
+  <div class="stats">
+    <div class="stat">
+      <div class="label">Цена BTC</div>
+      <div id="stat-price" class="value accent">—</div>
+    </div>
+    <div class="stat">
+      <div class="label">Fair Value</div>
+      <div id="stat-fair" class="value">—</div>
+    </div>
+    <div class="stat">
+      <div class="label">Отклонение</div>
+      <div id="stat-dev" class="value">—</div>
+    </div>
+    <div class="stat">
+      <div class="label">Положение в канале</div>
+      <div id="stat-pos" class="value">—</div>
+    </div>
+  </div>
+</header>
+
+<div class="controls">
+  <label>Ось X:
+    <select id="x-mode">
+      <option value="date" selected>Дата (log y)</option>
+      <option value="loglog">Дни от genesis (log x · log y)</option>
+    </select>
+  </label>
+  <div class="sep"></div>
+  <button id="btn-channels" class="active">Канал экстремумов</button>
+  <button id="btn-quantile">Квантильный канал (5%/95%)</button>
+  <button id="btn-points" class="active">Точки цены</button>
+  <div class="sep"></div>
+  <label>Базовая дата:
+    <select id="basis">
+      <option value="genesis" selected>Genesis (2009‑01‑03)</option>
+      <option value="first">Первая цена (2010‑07‑17)</option>
+    </select>
+  </label>
+  <div class="sep"></div>
+  <span id="status" class="status-loading">Загрузка свежей цены…</span>
+</div>
+
+<div id="chart"></div>
+
+<footer>
+  <div>
+    Модель: <span class="formula">log₁₀(price) = a + b · log₁₀(days)</span>
+    · <span id="model-coef">a = —, b = —</span>
+  </div>
+  <div>
+    Данные: встроенная месячная история + live‑подгрузка спот‑цены (CoinGecko / Coindesk).
+  </div>
+</footer>
+
+<script>
+"use strict";
+
+// =============================================================
+// 1. Историческая месячная цена BTC (USD), на конец месяца.
+//    Точность округлена; используется как обучающая выборка
+//    для лог‑лог регрессии. Достаточно для модели степ. закона
+//    на горизонте 15+ лет.
+// =============================================================
+const HISTORY = [
+  ["2010-07-17", 0.05],
+  ["2010-08-31", 0.06],
+  ["2010-09-30", 0.06],
+  ["2010-10-31", 0.20],
+  ["2010-11-30", 0.23],
+  ["2010-12-31", 0.30],
+  ["2011-01-31", 0.30],
+  ["2011-02-28", 0.92],
+  ["2011-03-31", 0.79],
+  ["2011-04-30", 1.65],
+  ["2011-05-31", 8.50],
+  ["2011-06-30", 16.0],
+  ["2011-07-31", 13.5],
+  ["2011-08-31", 9.0],
+  ["2011-09-30", 5.0],
+  ["2011-10-31", 3.0],
+  ["2011-11-30", 3.0],
+  ["2011-12-31", 4.7],
+  ["2012-01-31", 6.0],
+  ["2012-02-29", 5.0],
+  ["2012-03-31", 4.95],
+  ["2012-04-30", 5.0],
+  ["2012-05-31", 5.2],
+  ["2012-06-30", 6.6],
+  ["2012-07-31", 9.2],
+  ["2012-08-31", 9.6],
+  ["2012-09-30", 12.0],
+  ["2012-10-31", 11.0],
+  ["2012-11-30", 12.4],
+  ["2012-12-31", 13.5],
+  ["2013-01-31", 20.4],
+  ["2013-02-28", 33.5],
+  ["2013-03-31", 93.0],
+  ["2013-04-30", 139.0],
+  ["2013-05-31", 129.0],
+  ["2013-06-30", 100.0],
+  ["2013-07-31", 102.0],
+  ["2013-08-31", 135.0],
+  ["2013-09-30", 127.0],
+  ["2013-10-31", 196.0],
+  ["2013-11-30", 1132.0],
+  ["2013-12-31", 758.0],
+  ["2014-01-31", 824.0],
+  ["2014-02-28", 558.0],
+  ["2014-03-31", 471.0],
+  ["2014-04-30", 458.0],
+  ["2014-05-31", 629.0],
+  ["2014-06-30", 632.0],
+  ["2014-07-31", 587.0],
+  ["2014-08-31", 478.0],
+  ["2014-09-30", 379.0],
+  ["2014-10-31", 339.0],
+  ["2014-11-30", 379.0],
+  ["2014-12-31", 320.0],
+  ["2015-01-31", 217.0],
+  ["2015-02-28", 254.0],
+  ["2015-03-31", 244.0],
+  ["2015-04-30", 236.0],
+  ["2015-05-31", 230.0],
+  ["2015-06-30", 263.0],
+  ["2015-07-31", 285.0],
+  ["2015-08-31", 230.0],
+  ["2015-09-30", 236.0],
+  ["2015-10-31", 314.0],
+  ["2015-11-30", 377.0],
+  ["2015-12-31", 430.0],
+  ["2016-01-31", 379.0],
+  ["2016-02-29", 437.0],
+  ["2016-03-31", 416.0],
+  ["2016-04-30", 449.0],
+  ["2016-05-31", 532.0],
+  ["2016-06-30", 671.0],
+  ["2016-07-31", 624.0],
+  ["2016-08-31", 575.0],
+  ["2016-09-30", 609.0],
+  ["2016-10-31", 700.0],
+  ["2016-11-30", 745.0],
+  ["2016-12-31", 963.0],
+  ["2017-01-31", 970.0],
+  ["2017-02-28", 1190.0],
+  ["2017-03-31", 1071.0],
+  ["2017-04-30", 1348.0],
+  ["2017-05-31", 2286.0],
+  ["2017-06-30", 2480.0],
+  ["2017-07-31", 2875.0],
+  ["2017-08-31", 4703.0],
+  ["2017-09-30", 4338.0],
+  ["2017-10-31", 6463.0],
+  ["2017-11-30", 10233.0],
+  ["2017-12-31", 14156.0],
+  ["2018-01-31", 10221.0],
+  ["2018-02-28", 10333.0],
+  ["2018-03-31", 6926.0],
+  ["2018-04-30", 9244.0],
+  ["2018-05-31", 7494.0],
+  ["2018-06-30", 6385.0],
+  ["2018-07-31", 7780.0],
+  ["2018-08-31", 7037.0],
+  ["2018-09-30", 6601.0],
+  ["2018-10-31", 6317.0],
+  ["2018-11-30", 4017.0],
+  ["2018-12-31", 3742.0],
+  ["2019-01-31", 3437.0],
+  ["2019-02-28", 3854.0],
+  ["2019-03-31", 4105.0],
+  ["2019-04-30", 5320.0],
+  ["2019-05-31", 8574.0],
+  ["2019-06-30", 10817.0],
+  ["2019-07-31", 10082.0],
+  ["2019-08-31", 9594.0],
+  ["2019-09-30", 8311.0],
+  ["2019-10-31", 9199.0],
+  ["2019-11-30", 7546.0],
+  ["2019-12-31", 7193.0],
+  ["2020-01-31", 9350.0],
+  ["2020-02-29", 8528.0],
+  ["2020-03-31", 6438.0],
+  ["2020-04-30", 8800.0],
+  ["2020-05-31", 9461.0],
+  ["2020-06-30", 9138.0],
+  ["2020-07-31", 11332.0],
+  ["2020-08-31", 11644.0],
+  ["2020-09-30", 10772.0],
+  ["2020-10-31", 13780.0],
+  ["2020-11-30", 19625.0],
+  ["2020-12-31", 28990.0],
+  ["2021-01-31", 33108.0],
+  ["2021-02-28", 45137.0],
+  ["2021-03-31", 58800.0],
+  ["2021-04-30", 57700.0],
+  ["2021-05-31", 37300.0],
+  ["2021-06-30", 35040.0],
+  ["2021-07-31", 41560.0],
+  ["2021-08-31", 47100.0],
+  ["2021-09-30", 43820.0],
+  ["2021-10-31", 61300.0],
+  ["2021-11-30", 56850.0],
+  ["2021-12-31", 46220.0],
+  ["2022-01-31", 38470.0],
+  ["2022-02-28", 43160.0],
+  ["2022-03-31", 45530.0],
+  ["2022-04-30", 37670.0],
+  ["2022-05-31", 31790.0],
+  ["2022-06-30", 19940.0],
+  ["2022-07-31", 23310.0],
+  ["2022-08-31", 20050.0],
+  ["2022-09-30", 19420.0],
+  ["2022-10-31", 20490.0],
+  ["2022-11-30", 17170.0],
+  ["2022-12-31", 16550.0],
+  ["2023-01-31", 23130.0],
+  ["2023-02-28", 23150.0],
+  ["2023-03-31", 28480.0],
+  ["2023-04-30", 29230.0],
+  ["2023-05-31", 27220.0],
+  ["2023-06-30", 30470.0],
+  ["2023-07-31", 29230.0],
+  ["2023-08-31", 25940.0],
+  ["2023-09-30", 26970.0],
+  ["2023-10-31", 34660.0],
+  ["2023-11-30", 37720.0],
+  ["2023-12-31", 42270.0],
+  ["2024-01-31", 42580.0],
+  ["2024-02-29", 61190.0],
+  ["2024-03-31", 71290.0],
+  ["2024-04-30", 60630.0],
+  ["2024-05-31", 67490.0],
+  ["2024-06-30", 62680.0],
+  ["2024-07-31", 64620.0],
+  ["2024-08-31", 58970.0],
+  ["2024-09-30", 63300.0],
+  ["2024-10-31", 70220.0],
+  ["2024-11-30", 96450.0],
+  ["2024-12-31", 93420.0],
+  ["2025-01-31", 102420.0],
+  ["2025-02-28", 84380.0],
+  ["2025-03-31", 82540.0],
+  ["2025-04-30", 94210.0]
+];
+
+const GENESIS = new Date("2009-01-03T00:00:00Z");
+const FIRST_PRICE_DATE = new Date("2010-07-17T00:00:00Z");
+const MS_PER_DAY = 86400000;
+
+let basisDate = GENESIS;
+
+function daysSinceBasis(d) {
+  return (d.getTime() - basisDate.getTime()) / MS_PER_DAY;
+}
+
+// =============================================================
+// 2. Линейная регрессия в лог‑лог пространстве (OLS).
+// =============================================================
+function fitPowerLaw(points) {
+  // points: [{date: Date, price: number}]
+  const xs = [], ys = [];
+  for (const p of points) {
+    const days = daysSinceBasis(p.date);
+    if (days <= 0 || p.price <= 0) continue;
+    xs.push(Math.log10(days));
+    ys.push(Math.log10(p.price));
+  }
+  const n = xs.length;
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - mx) * (ys[i] - my);
+    den += (xs[i] - mx) ** 2;
+  }
+  const b = num / den;
+  const a = my - b * mx;
+  // residuals
+  const residuals = xs.map((x, i) => ys[i] - (a + b * x));
+  return { a, b, residuals, xs, ys };
+}
+
+function quantile(arr, q) {
+  const sorted = [...arr].sort((x, y) => x - y);
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+// =============================================================
+// 3. Подготовка данных, регрессии и каналов
+// =============================================================
+let points = HISTORY.map(([d, p]) => ({ date: new Date(d + "T00:00:00Z"), price: p }));
+let model = null;
+let extremes = null;       // канал по min/max остатку (экстремумы)
+let quantiles = null;      // квантильный канал
+let liveAdded = false;
+
+function recompute() {
+  model = fitPowerLaw(points);
+  const r = model.residuals;
+  extremes = { upper: Math.max(...r), lower: Math.min(...r) };
+  quantiles = { upper: quantile(r, 0.95), lower: quantile(r, 0.05) };
+  document.getElementById("model-coef").textContent =
+    `a = ${model.a.toFixed(4)}, b = ${model.b.toFixed(4)} · price = 10^a · days^b`;
+}
+
+function fairValue(date) {
+  const days = daysSinceBasis(date);
+  if (days <= 0) return NaN;
+  return Math.pow(10, model.a + model.b * Math.log10(days));
+}
+
+function channelAt(date, dev) {
+  return fairValue(date) * Math.pow(10, dev);
+}
+
+// =============================================================
+// 4. Построение графика (Plotly)
+// =============================================================
+const SHOW = {
+  extremes: true,
+  quantile: false,
+  points: true,
+  mode: "date", // "date" | "loglog"
+};
+
+function buildTraces() {
+  // X‑грид с расширением в будущее на 5 лет от последней точки
+  const lastDate = points[points.length - 1].date;
+  const horizon = new Date(lastDate.getTime() + 5 * 365 * MS_PER_DAY);
+  const startDate = new Date(GENESIS.getTime() + 200 * MS_PER_DAY); // ~июль 2009
+  const grid = [];
+  const stepDays = 10;
+  for (let t = startDate.getTime(); t <= horizon.getTime(); t += stepDays * MS_PER_DAY) {
+    grid.push(new Date(t));
+  }
+
+  const gridDays = grid.map(d => daysSinceBasis(d));
+  const fair = grid.map(d => fairValue(d));
+  const upE = grid.map(d => channelAt(d, extremes.upper));
+  const lowE = grid.map(d => channelAt(d, extremes.lower));
+  const upQ = grid.map(d => channelAt(d, quantiles.upper));
+  const lowQ = grid.map(d => channelAt(d, quantiles.lower));
+
+  const xPoints = SHOW.mode === "date" ? points.map(p => p.date) : points.map(p => daysSinceBasis(p.date));
+  const xGrid = SHOW.mode === "date" ? grid : gridDays;
+  const yPoints = points.map(p => p.price);
+
+  const traces = [];
+
+  if (SHOW.extremes) {
+    traces.push({
+      x: xGrid, y: upE,
+      name: "Верх канала (экстремум)",
+      mode: "lines",
+      line: { color: "#f85149", width: 1.5, dash: "dot" },
+      hovertemplate: "Верх (экстр.): $%{y:,.0f}<extra></extra>",
+    });
+    traces.push({
+      x: xGrid, y: lowE,
+      name: "Низ канала (экстремум)",
+      mode: "lines",
+      line: { color: "#3fb950", width: 1.5, dash: "dot" },
+      fill: "tonexty",
+      fillcolor: "rgba(247, 147, 26, 0.04)",
+      hovertemplate: "Низ (экстр.): $%{y:,.0f}<extra></extra>",
+    });
+  }
+
+  if (SHOW.quantile) {
+    traces.push({
+      x: xGrid, y: upQ,
+      name: "95‑й квантиль",
+      mode: "lines",
+      line: { color: "#d29922", width: 1, dash: "dash" },
+      hovertemplate: "95%: $%{y:,.0f}<extra></extra>",
+    });
+    traces.push({
+      x: xGrid, y: lowQ,
+      name: "5‑й квантиль",
+      mode: "lines",
+      line: { color: "#58a6ff", width: 1, dash: "dash" },
+      hovertemplate: "5%: $%{y:,.0f}<extra></extra>",
+    });
+  }
+
+  // Fair value (центральная линия)
+  traces.push({
+    x: xGrid, y: fair,
+    name: "Fair Value (регрессия)",
+    mode: "lines",
+    line: { color: "#f7931a", width: 2.5 },
+    hovertemplate: "Fair: $%{y:,.2f}<extra></extra>",
+  });
+
+  // Точки цены
+  if (SHOW.points) {
+    traces.push({
+      x: xPoints, y: yPoints,
+      name: "BTC цена",
+      mode: "lines+markers",
+      line: { color: "#58a6ff", width: 1 },
+      marker: { size: 4, color: "#58a6ff" },
+      hovertemplate: SHOW.mode === "date"
+        ? "%{x|%Y-%m-%d}<br>BTC: $%{y:,.2f}<extra></extra>"
+        : "День %{x:.0f}<br>BTC: $%{y:,.2f}<extra></extra>",
+    });
+  }
+
+  return traces;
+}
+
+function buildLayout() {
+  const isLogLog = SHOW.mode === "loglog";
+  return {
+    paper_bgcolor: "#0d1117",
+    plot_bgcolor: "#0d1117",
+    font: { color: "#e6edf3", family: "ui-monospace, SFMono-Regular, Menlo, monospace", size: 12 },
+    margin: { l: 70, r: 20, t: 20, b: 50 },
+    showlegend: true,
+    legend: {
+      orientation: "h",
+      x: 0, y: 1.06,
+      bgcolor: "rgba(22,27,34,0.6)",
+      bordercolor: "#30363d",
+      borderwidth: 1,
+    },
+    hovermode: "x unified",
+    xaxis: {
+      title: isLogLog ? "Дней от " + (basisDate === GENESIS ? "Genesis" : "первой цены") + " (log)" : "Дата",
+      type: isLogLog ? "log" : "date",
+      gridcolor: "#21262d",
+      zerolinecolor: "#30363d",
+      tickfont: { color: "#8b949e" },
+    },
+    yaxis: {
+      title: "Цена BTC (USD, log)",
+      type: "log",
+      gridcolor: "#21262d",
+      zerolinecolor: "#30363d",
+      tickfont: { color: "#8b949e" },
+      tickformat: "$,",
+    },
+  };
+}
+
+function render() {
+  Plotly.react("chart", buildTraces(), buildLayout(), {
+    responsive: true,
+    displaylogo: false,
+    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+  });
+  updateStats();
+}
+
+// =============================================================
+// 5. Текущая статистика (price, fair, deviation, position)
+// =============================================================
+function updateStats() {
+  const last = points[points.length - 1];
+  const fv = fairValue(new Date()); // на сегодня
+  const fairToday = fv;
+  const today = new Date();
+  const dev = last.price / fairValue(last.date) - 1;
+  const upE = channelAt(today, extremes.upper);
+  const lowE = channelAt(today, extremes.lower);
+  // pos in [0,1]: где сейчас цена внутри канала экстремумов
+  const logP = Math.log10(last.price);
+  const logL = Math.log10(lowE);
+  const logU = Math.log10(upE);
+  const pos = ((logP - logL) / (logU - logL)) * 100;
+
+  document.getElementById("stat-price").textContent = "$" + fmt(last.price);
+  document.getElementById("stat-fair").textContent = "$" + fmt(fairToday);
+  const devEl = document.getElementById("stat-dev");
+  devEl.textContent = (dev >= 0 ? "+" : "") + (dev * 100).toFixed(1) + "%";
+  devEl.className = "value " + (dev >= 0 ? "green" : "red");
+  const posEl = document.getElementById("stat-pos");
+  posEl.textContent = isFinite(pos) ? pos.toFixed(0) + "%" : "—";
+  posEl.className = "value " + (pos > 80 ? "red" : pos < 20 ? "green" : "");
+}
+
+function fmt(n) {
+  if (n >= 1000) return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  if (n >= 1) return n.toFixed(2);
+  return n.toFixed(4);
+}
+
+// =============================================================
+// 6. Live‑подгрузка спот‑цены (best effort)
+// =============================================================
+async function fetchLivePrice() {
+  const status = document.getElementById("status");
+  const urls = [
+    {
+      url: "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+      parse: j => j.bitcoin && j.bitcoin.usd,
+    },
+    {
+      url: "https://api.coindesk.com/v1/bpi/currentprice/USD.json",
+      parse: j => j.bpi && j.bpi.USD && j.bpi.USD.rate_float,
+    },
+    {
+      url: "https://api.blockchain.com/v3/exchange/tickers/BTC-USD",
+      parse: j => j.last_trade_price,
+    },
+  ];
+  for (const { url, parse } of urls) {
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const p = parse(j);
+      if (p && p > 0) {
+        // Заменяем последнюю точку или добавляем «сегодня»
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        const last = points[points.length - 1];
+        if ((today - last.date) / MS_PER_DAY > 7) {
+          points.push({ date: today, price: p });
+        } else {
+          points[points.length - 1] = { date: today, price: p };
+        }
+        liveAdded = true;
+        status.textContent = "Спот‑цена обновлена ($" + fmt(p) + ") · " + new URL(url).host;
+        status.className = "status-ok";
+        recompute();
+        render();
+        return;
+      }
+    } catch (e) { /* try next */ }
+  }
+  status.textContent = "Live‑цена недоступна — используется последняя историческая точка.";
+  status.className = "status-fail";
+}
+
+// =============================================================
+// 7. Обработчики UI
+// =============================================================
+document.getElementById("btn-channels").addEventListener("click", function () {
+  SHOW.extremes = !SHOW.extremes;
+  this.classList.toggle("active", SHOW.extremes);
+  render();
+});
+document.getElementById("btn-quantile").addEventListener("click", function () {
+  SHOW.quantile = !SHOW.quantile;
+  this.classList.toggle("active", SHOW.quantile);
+  render();
+});
+document.getElementById("btn-points").addEventListener("click", function () {
+  SHOW.points = !SHOW.points;
+  this.classList.toggle("active", SHOW.points);
+  render();
+});
+document.getElementById("x-mode").addEventListener("change", function () {
+  SHOW.mode = this.value;
+  render();
+});
+document.getElementById("basis").addEventListener("change", function () {
+  basisDate = this.value === "genesis" ? GENESIS : FIRST_PRICE_DATE;
+  recompute();
+  render();
+});
+
+// =============================================================
+// 8. Старт
+// =============================================================
+recompute();
+render();
+fetchLivePrice();
+</script>
+</body>
+</html>
