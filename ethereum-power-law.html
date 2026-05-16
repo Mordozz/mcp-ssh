@@ -101,7 +101,8 @@
 </header>
 
 <div class="controls">
-  <button id="btn-channels" class="active">Канал экстремумов</button>
+  <button id="btn-channels" class="active">Support / Resistance (PL)</button>
+  <button id="btn-markers" class="active">Маркеры пиков/впадин</button>
   <button id="btn-quantile">Квантильный канал (5%/95%)</button>
   <button id="btn-fair" class="active">Fair Value</button>
   <div class="sep"></div>
@@ -184,25 +185,72 @@ function quantile(arr, q) {
   return lo === hi ? s[lo] : s[lo] + (s[hi] - s[lo]) * (pos - lo);
 }
 
+// Цикловые экстремумы: локальный max/min в окне ±windowDays. Используются
+// для отдельных степенных фитов resistance / support — это и есть
+// канонический «канал power law» (Santostasi): три линии с разными наклонами,
+// сходящиеся к fair value, а НЕ параллельный envelope.
+const CYCLE_WINDOW_DAYS = 365;
+function detectCycleExtremes(pts, windowDays) {
+  const tops = [], bottoms = [];
+  const n = pts.length;
+  let lo = 0, hi = 0;
+  for (let i = 0; i < n; i++) {
+    const t = pts[i].date.getTime();
+    while (hi < n - 1 && (pts[hi + 1].date.getTime() - t) / MS_PER_DAY <= windowDays) hi++;
+    while (lo < n - 1 && (t - pts[lo].date.getTime()) / MS_PER_DAY > windowDays) lo++;
+    let isMax = true, isMin = true;
+    for (let j = lo; j <= hi; j++) {
+      if (j === i) continue;
+      if (pts[j].price > pts[i].price) isMax = false;
+      if (pts[j].price < pts[i].price) isMin = false;
+      if (!isMax && !isMin) break;
+    }
+    if (isMax) tops.push(pts[i]);
+    if (isMin) bottoms.push(pts[i]);
+  }
+  return { tops, bottoms };
+}
+
 // =========== State ===================================================
 let points = CFG.embedded.map(([d, p]) => ({ date: new Date(d + "T00:00:00Z"), price: p }));
 let model = null, extremes = null, quantiles = null;
+let cycle = { tops: [], bottoms: [] }, resistFit = null, supportFit = null;
 let dataSource = "embedded (" + points.length + " pts)";
-const SHOW = { extremes: true, quantile: false, fair: true };
+const SHOW = { extremes: true, quantile: false, fair: true, markers: true };
 
 function recompute() {
   model = fitPowerLaw(points);
   const r = model.residuals;
   extremes = { upper: Math.max(...r), lower: Math.min(...r) };
   quantiles = { upper: quantile(r, 0.95), lower: quantile(r, 0.05) };
-  document.getElementById("model-coef").textContent =
-    `a = ${model.a.toFixed(4)}, b = ${model.b.toFixed(4)} · R² = ${model.r2.toFixed(4)} · n = ${model.n}`;
+
+  cycle = detectCycleExtremes(points, CYCLE_WINDOW_DAYS);
+  resistFit = cycle.tops.length >= 3 ? fitPowerLaw(cycle.tops) : null;
+  supportFit = cycle.bottoms.length >= 3 ? fitPowerLaw(cycle.bottoms) : null;
+
+  const coefEl = document.getElementById("model-coef");
+  let txt = `central: a=${model.a.toFixed(3)}, b=${model.b.toFixed(3)}, R²=${model.r2.toFixed(3)}, n=${model.n}`;
+  if (resistFit) txt += ` · resistance: b=${resistFit.b.toFixed(2)} (n=${cycle.tops.length})`;
+  if (supportFit) txt += ` · support: b=${supportFit.b.toFixed(2)} (n=${cycle.bottoms.length})`;
+  coefEl.textContent = txt;
 }
 const fairValue = d => {
   const days = daysSinceBasis(d);
   return days <= 0 ? NaN : Math.pow(10, model.a + model.b * Math.log10(days));
 };
 const channelAt = (d, dev) => fairValue(d) * Math.pow(10, dev);
+const resistanceAt = d => {
+  if (!resistFit) return channelAt(d, extremes.upper);
+  const days = daysSinceBasis(d);
+  if (days <= 0) return NaN;
+  return Math.pow(10, resistFit.a + resistFit.b * Math.log10(days));
+};
+const supportAt = d => {
+  if (!supportFit) return channelAt(d, extremes.lower);
+  const days = daysSinceBasis(d);
+  if (days <= 0) return NaN;
+  return Math.pow(10, supportFit.a + supportFit.b * Math.log10(days));
+};
 
 // =========== Lightweight Charts ====================================
 let chart, sPrice, sFair, sUpE, sLowE, sUpQ, sLowQ;
@@ -279,8 +327,8 @@ function initChart() {
     }
     const date = new Date((typeof param.time === "number" ? param.time : 0) * 1000);
     const fair = fairValue(date);
-    const upE = channelAt(date, extremes.upper);
-    const lowE = channelAt(date, extremes.lower);
+    const upE = resistanceAt(date);
+    const lowE = supportAt(date);
     const upQ = channelAt(date, quantiles.upper);
     const lowQ = channelAt(date, quantiles.lower);
     const pData = param.seriesData.get(sPrice);
@@ -293,8 +341,8 @@ function initChart() {
     if (isFinite(price)) html += `<div class="row"><span class="k">Цена</span><span class="v price">${fmtP(price)}</span></div>`;
     html += `<div class="row"><span class="k">Fair Value</span><span class="v fair">${fmtP(fair)}</span></div>`;
     if (SHOW.extremes) {
-      html += `<div class="row"><span class="k">Верх (экстр.)</span><span class="v top">${fmtP(upE)}</span></div>`;
-      html += `<div class="row"><span class="k">Низ (экстр.)</span><span class="v bot">${fmtP(lowE)}</span></div>`;
+      html += `<div class="row"><span class="k">Resistance</span><span class="v top">${fmtP(upE)}</span></div>`;
+      html += `<div class="row"><span class="k">Support</span><span class="v bot">${fmtP(lowE)}</span></div>`;
     }
     if (SHOW.quantile) {
       html += `<div class="row"><span class="k">95%</span><span class="v top">${fmtP(upQ)}</span></div>`;
@@ -341,8 +389,8 @@ function buildSeriesData() {
   return {
     price: priceDedup,
     fair:  mk(fairValue),
-    upE:   mk(d => channelAt(d, extremes.upper)),
-    lowE:  mk(d => channelAt(d, extremes.lower)),
+    upE:   mk(resistanceAt),
+    lowE:  mk(supportAt),
     upQ:   mk(d => channelAt(d, quantiles.upper)),
     lowQ:  mk(d => channelAt(d, quantiles.lower)),
   };
@@ -357,6 +405,22 @@ function render() {
   sLowE.setData(SHOW.extremes ? d.lowE : []);
   sUpQ.setData(SHOW.quantile ? d.upQ : []);
   sLowQ.setData(SHOW.quantile ? d.lowQ : []);
+
+  if (SHOW.markers && SHOW.extremes) {
+    const markers = [];
+    for (const p of cycle.tops) markers.push({
+      time: asTime(p.date), position: "aboveBar", color: "#f85149", shape: "arrowDown",
+      text: "TOP $" + fmtUsd(p.price).replace("$", "")
+    });
+    for (const p of cycle.bottoms) markers.push({
+      time: asTime(p.date), position: "belowBar", color: "#3fb950", shape: "arrowUp",
+      text: "BOT $" + fmtUsd(p.price).replace("$", "")
+    });
+    markers.sort((a, b) => a.time - b.time);
+    sPrice.setMarkers(markers);
+  } else {
+    sPrice.setMarkers([]);
+  }
   updateStats();
 }
 
@@ -365,8 +429,8 @@ function updateStats() {
   const today = new Date();
   const fairToday = fairValue(today);
   const dev = last.price / fairValue(last.date) - 1;
-  const upE = channelAt(today, extremes.upper);
-  const lowE = channelAt(today, extremes.lower);
+  const upE = resistanceAt(today);
+  const lowE = supportAt(today);
   const pos = ((Math.log10(last.price) - Math.log10(lowE)) / (Math.log10(upE) - Math.log10(lowE))) * 100;
   document.getElementById("stat-price").textContent = fmtUsd(last.price);
   document.getElementById("stat-fair").textContent = fmtUsd(fairToday);
@@ -441,6 +505,9 @@ async function fetchSpot() {
 function bindUI() {
   document.getElementById("btn-channels").addEventListener("click", function () {
     SHOW.extremes = !SHOW.extremes; this.classList.toggle("active", SHOW.extremes); render();
+  });
+  document.getElementById("btn-markers").addEventListener("click", function () {
+    SHOW.markers = !SHOW.markers; this.classList.toggle("active", SHOW.markers); render();
   });
   document.getElementById("btn-quantile").addEventListener("click", function () {
     SHOW.quantile = !SHOW.quantile; this.classList.toggle("active", SHOW.quantile); render();
