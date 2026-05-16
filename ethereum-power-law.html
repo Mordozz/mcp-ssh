@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Bitcoin Power Law Regression — Log/Log</title>
+<title>Ethereum Power Law Regression — Log/Log</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <link rel="stylesheet" href="assets/crypto-power-law.css" />
 </head>
 <body>
 
 <header>
-  <h1>Bitcoin Power Law Regression <small>log–log модель · справедливая стоимость и канал по экстремумам</small></h1>
+  <h1>Ethereum Power Law Regression <small>log–log модель · справедливая стоимость и канал по экстремумам</small></h1>
   <div class="stats">
-    <div class="stat"><div class="label">Цена BTC</div><div id="stat-price" class="value accent">—</div></div>
+    <div class="stat"><div class="label">Цена ETH</div><div id="stat-price" class="value accent">—</div></div>
     <div class="stat"><div class="label">Fair Value</div><div id="stat-fair" class="value">—</div></div>
     <div class="stat"><div class="label">Отклонение</div><div id="stat-dev" class="value">—</div></div>
     <div class="stat"><div class="label">Положение в канале</div><div id="stat-pos" class="value">—</div></div>
@@ -33,12 +33,12 @@
   <div class="sep"></div>
   <label>Базовая дата:
     <select id="basis">
-      <option value="genesis" selected>Genesis (2009-01-03)</option>
-      <option value="first">Первая цена (2010-07-17)</option>
+      <option value="genesis" selected>Genesis (2015-07-30)</option>
+      <option value="first">Первая цена (2015-08-07)</option>
     </select>
   </label>
   <div class="sep"></div>
-  <span class="cross-link">→ <a href="ethereum-power-law.html">Ethereum</a></span>
+  <span class="cross-link">→ <a href="bitcoin-power-law.html">Bitcoin</a></span>
   <div class="sep"></div>
   <span id="status" class="status-loading">Инициализация…</span>
 </div>
@@ -55,21 +55,19 @@
 
 <script>
 window.CRYPTO_PL_CONFIG = {
-  symbol: "BTC",
-  name: "Bitcoin",
-  accent: "#f7931a",
-  genesis: "2009-01-03",
-  firstPrice: "2010-07-17",
-  // Минимальный встроенный fallback на случай, если CryptoCompare недоступен.
-  // Месячные цены на конец месяца. Используется только до момента, когда
-  // подгрузится полная ежедневная история из API.
+  symbol: "ETH",
+  name: "Ethereum",
+  accent: "#627eea",
+  // Дата создания genesis-блока Ethereum: 30 июля 2015
+  genesis: "2015-07-30",
+  // Первая рыночная цена на биржах ~7 августа 2015
+  firstPrice: "2015-08-07",
+  // Минимальный embedded fallback (годовые точки на конец года).
   embedded: [
-    ["2010-07-17", 0.05], ["2010-12-31", 0.30], ["2011-06-30", 16.0],
-    ["2011-12-31", 4.7], ["2012-12-31", 13.5], ["2013-12-31", 758.0],
-    ["2014-12-31", 320.0], ["2015-12-31", 430.0], ["2016-12-31", 963.0],
-    ["2017-12-31", 14156.0], ["2018-12-31", 3742.0], ["2019-12-31", 7193.0],
-    ["2020-12-31", 28990.0], ["2021-12-31", 46220.0], ["2022-12-31", 16550.0],
-    ["2023-12-31", 42270.0], ["2024-12-31", 93420.0], ["2025-04-30", 94210.0]
+    ["2015-08-07", 2.77], ["2015-12-31", 0.93], ["2016-12-31", 8.30],
+    ["2017-12-31", 756.0], ["2018-12-31", 133.0], ["2019-12-31", 130.0],
+    ["2020-12-31", 738.0], ["2021-12-31", 3683.0], ["2022-12-31", 1196.0],
+    ["2023-12-31", 2294.0], ["2024-12-31", 3337.0], ["2025-04-30", 1797.0]
   ],
 };
 </script>
