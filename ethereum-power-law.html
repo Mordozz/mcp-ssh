@@ -587,26 +587,44 @@ function attachCrosshairLabel() {
     if (!isFinite(date.getTime())) { label.style.display = "none"; return; }
 
     const dateStr = fmtDate(date);
-    const priceStr = fmtUsd(yVal);
     const dToday = daysSinceBasis(date);
     const fv = fairAt(dToday);
     const rv = resistAt(dToday);
     const sv = supportAt(dToday);
-    const dev = isFinite(fv) ? (yVal / fv - 1) * 100 : NaN;
-    const pos = (isFinite(rv) && isFinite(sv) && rv > sv) ?
-      ((Math.log10(yVal) - Math.log10(sv)) / (Math.log10(rv) - Math.log10(sv))) * 100 : NaN;
+    // Конвертация значения на оси (mcap / supply-adj / price) → реальная цена
+    // токена, чтобы в crosshair всегда показывать понятную $/ETH. Mode влияет
+    // только на сам фит и Y-ось графика, а не на содержимое тултипа.
+    const supp = supplyAt(date);
+    const toPrice = v => {
+      if (!isFinite(v)) return NaN;
+      if (VALUE_MODE === "mcap") return v / supp;
+      if (VALUE_MODE === "supply_adj") return v * supp / ETH_SUPPLY_LATEST;
+      return v;
+    };
+    const priceCursor = toPrice(yVal);
+    const fvPrice = toPrice(fv);
+    const rvPrice = toPrice(rv);
+    const svPrice = toPrice(sv);
+    const dev = isFinite(fvPrice) ? (priceCursor / fvPrice - 1) * 100 : NaN;
+    const pos = (isFinite(rvPrice) && isFinite(svPrice) && rvPrice > svPrice) ?
+      ((Math.log10(priceCursor) - Math.log10(svPrice)) / (Math.log10(rvPrice) - Math.log10(svPrice))) * 100 : NaN;
 
-    let html = `<b>${dateStr}</b> · <span class="p">${priceStr}</span>`;
-    if (isFinite(rv)) html += `<br><span style="color:var(--red)">Resistance:</span> ${fmtUsd(rv)}`;
-    if (isFinite(fv)) {
-      html += `<br><span style="color:var(--accent)">Fair:</span> ${fmtUsd(fv)}`;
+    let html = `<b>${dateStr}</b> · <span class="p">${fmtUsd(priceCursor)}</span>`;
+    // Вторая строка: значение по оси, если режим не price (mcap или supply-adj)
+    if (VALUE_MODE !== "price") {
+      const lbl = VALUE_MODE === "mcap" ? "MCAP" : "Supply-adj";
+      html += ` <span style="color:var(--text-dim)">(${lbl}: ${fmtUsd(yVal)})</span>`;
+    }
+    if (isFinite(rvPrice)) html += `<br><span style="color:var(--red)">Resistance:</span> ${fmtUsd(rvPrice)}`;
+    if (isFinite(fvPrice)) {
+      html += `<br><span style="color:var(--accent)">Fair:</span> ${fmtUsd(fvPrice)}`;
       if (isFinite(dev)) {
         const sign = dev >= 0 ? "+" : "";
         const cls = dev >= 0 ? "color:var(--green)" : "color:var(--red)";
         html += ` · <span style="${cls}">${sign}${dev.toFixed(1)}%</span>`;
       }
     }
-    if (isFinite(sv)) html += `<br><span style="color:var(--green)">Support:</span> ${fmtUsd(sv)}`;
+    if (isFinite(svPrice)) html += `<br><span style="color:var(--green)">Support:</span> ${fmtUsd(svPrice)}`;
     if (isFinite(pos)) {
       const cls = pos > 80 ? "color:var(--red)" : pos < 20 ? "color:var(--green)" : "";
       html += `<br><span style="color:var(--text-dim)">В канале:</span> <span style="${cls}">${pos.toFixed(0)}%</span>`;
@@ -627,6 +645,7 @@ function attachCrosshairLabel() {
 
 function updateStats() {
   const last = points[points.length - 1];
+  const rawLast = pointsRaw[pointsRaw.length - 1];
   const today = new Date();
   const dToday = daysSinceBasis(today);
   const fv = fairAt(dToday);
@@ -634,8 +653,17 @@ function updateStats() {
   const r = resistAt(dToday);
   const s = supportAt(dToday);
   const pos = ((Math.log10(last.price) - Math.log10(s)) / (Math.log10(r) - Math.log10(s))) * 100;
-  document.getElementById("stat-price").textContent = fmtUsd(last.price);
-  document.getElementById("stat-fair").textContent = fmtUsd(fv);
+  // Стат-блок всегда показывает реальные цены $/ETH, независимо от режима
+  // фита, чтобы не путать пользователя при переключении MCAP/Supply-adj.
+  const supp = supplyAt(today);
+  const toPrice = v => {
+    if (!isFinite(v)) return NaN;
+    if (VALUE_MODE === "mcap") return v / supp;
+    if (VALUE_MODE === "supply_adj") return v * supp / ETH_SUPPLY_LATEST;
+    return v;
+  };
+  document.getElementById("stat-price").textContent = fmtUsd(rawLast ? rawLast.nominal : last.price);
+  document.getElementById("stat-fair").textContent = fmtUsd(toPrice(fv));
   const devEl = document.getElementById("stat-dev");
   devEl.textContent = (dev >= 0 ? "+" : "") + (dev * 100).toFixed(1) + "%";
   devEl.className = "value " + (dev >= 0 ? "green" : "red");
