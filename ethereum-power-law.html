@@ -105,6 +105,14 @@
   <button id="btn-markers" class="active">Маркеры пиков / впадин</button>
   <button id="btn-fair" class="active">Fair Value</button>
   <div class="sep"></div>
+  <label>База:
+    <select id="mode">
+      <option value="mcap" selected>Market Cap (price × supply)</option>
+      <option value="price">Price (per token, nominal)</option>
+      <option value="supply_adj">Supply-adjusted price</option>
+    </select>
+  </label>
+  <div class="sep"></div>
   <label>Прогноз вперёд:
     <select id="horizon">
       <option value="3">3 года</option>
@@ -202,23 +210,86 @@ function detectCycleExtremes(pts, W) {
   return { tops, bots };
 }
 
+// =========== ETH supply schedule ===================================
+// Историческая эмиссия из публичных источников (etherscan/coingecko).
+// Ключевые milestone:
+//   - 2015-07-30: Frontier launch, supply 72M (60M crowdsale + 12M фонд)
+//   - 2017-10-16: Byzantium fork — reward block 5 → 3 ETH
+//   - 2019-02-28: Constantinople — reward 3 → 2 ETH
+//   - 2021-08-05: EIP-1559 — введён базовый-fee burn
+//   - 2022-09-15: Merge (PoW → PoS) — issuance падает с ~14k/день до ~1.5k
+//   - С тех пор supply то слегка инфлирует, то дефлирует.
+const ETH_SUPPLY = [
+  ["2015-07-30",  72.0],
+  ["2015-12-31",  76.0],
+  ["2016-12-31",  88.0],
+  ["2017-10-16",  95.7],   // Byzantium
+  ["2017-12-31",  96.5],
+  ["2018-12-31", 104.0],
+  ["2019-02-28", 105.0],   // Constantinople
+  ["2019-12-31", 109.0],
+  ["2020-12-31", 113.7],
+  ["2021-08-05", 117.0],   // EIP-1559 start
+  ["2021-12-31", 118.8],
+  ["2022-09-15", 120.5],   // Merge
+  ["2022-12-31", 120.5],
+  ["2023-12-31", 120.2],
+  ["2024-12-31", 120.5],
+  ["2025-12-31", 120.7],
+  ["2026-05-01", 120.7],
+].map(([d, s]) => ({ date: new Date(d + "T00:00:00Z"), supply: s * 1e6 }));
+const ETH_SUPPLY_LATEST = ETH_SUPPLY[ETH_SUPPLY.length - 1].supply;
+
+// Линейная интерполяция supply между табличными точками.
+function supplyAt(date) {
+  const t = date.getTime();
+  if (t <= ETH_SUPPLY[0].date.getTime()) return ETH_SUPPLY[0].supply;
+  if (t >= ETH_SUPPLY[ETH_SUPPLY.length - 1].date.getTime()) return ETH_SUPPLY_LATEST;
+  for (let i = 0; i < ETH_SUPPLY.length - 1; i++) {
+    const a = ETH_SUPPLY[i], b = ETH_SUPPLY[i + 1];
+    if (t >= a.date.getTime() && t <= b.date.getTime()) {
+      const w = (t - a.date.getTime()) / (b.date.getTime() - a.date.getTime());
+      return a.supply + (b.supply - a.supply) * w;
+    }
+  }
+  return ETH_SUPPLY_LATEST;
+}
+
 // =========== State ==================================================
-let points = CFG.embedded.map(([d, p]) => ({ date: new Date(d + "T00:00:00Z"), price: p }));
-let dataSource = "embedded (" + points.length + " pts)";
+// pointsRaw хранит nominal-цену; points[i].price — после applyMode().
+let pointsRaw = CFG.embedded.map(([d, p]) => ({ date: new Date(d + "T00:00:00Z"), nominal: p }));
+let points = [];
+let dataSource = "embedded (" + pointsRaw.length + " pts)";
 let model = null, cycle = { tops: [], bots: [] }, resistFit = null, supportFit = null;
 
 const SHOW = { extremes: true, markers: true, fair: true };
 let MODE = "loglog";
 let HORIZON_YEARS = 5;
+let VALUE_MODE = "mcap";  // "mcap" | "price" | "supply_adj"
+
+function applyValueMode() {
+  points = [];
+  for (const r of pointsRaw) {
+    const supp = supplyAt(r.date);
+    let v;
+    if (VALUE_MODE === "price")           v = r.nominal;
+    else if (VALUE_MODE === "supply_adj") v = r.nominal * (ETH_SUPPLY_LATEST / supp);
+    else /* mcap */                       v = r.nominal * supp;
+    if (v > 0) points.push({ date: r.date, price: v });
+  }
+}
 
 function recompute() {
+  applyValueMode();
+  if (points.length < 3) { model = null; return; }
   model = fitOLS(points);
   cycle = detectCycleExtremes(points, CYCLE_W);
   resistFit = cycle.tops.length >= 3 ? fitOLS(cycle.tops) : null;
   supportFit = cycle.bots.length >= 3 ? fitOLS(cycle.bots) : null;
-  let txt = `central: a=${model.a.toFixed(3)}, b=${model.b.toFixed(3)}, R²=${model.r2.toFixed(3)}, n=${model.n}`;
-  if (resistFit) txt += ` · resistance: a=${resistFit.a.toFixed(2)}, b=${resistFit.b.toFixed(2)} (n=${cycle.tops.length})`;
-  if (supportFit) txt += ` · support: a=${supportFit.a.toFixed(2)}, b=${supportFit.b.toFixed(2)} (n=${cycle.bots.length})`;
+  const ml = VALUE_MODE === "mcap" ? "MCAP" : VALUE_MODE === "supply_adj" ? "Supply-adj" : "Price";
+  let txt = `[${ml}]  central: a=${model.a.toFixed(3)}, b=${model.b.toFixed(3)}, R²=${model.r2.toFixed(3)}, n=${model.n}`;
+  if (resistFit) txt += ` · resistance: b=${resistFit.b.toFixed(2)} (n=${cycle.tops.length})`;
+  if (supportFit) txt += ` · support: b=${supportFit.b.toFixed(2)} (n=${cycle.bots.length})`;
   document.getElementById("model-coef").textContent = txt;
 }
 
@@ -246,8 +317,11 @@ const supportAt = days => {
 // =========== Date / day label helpers ==============================
 function fmtUsd(p) {
   if (!isFinite(p)) return "—";
+  if (p >= 1e12) return "$" + (p / 1e12).toFixed(2) + "T";
+  if (p >= 1e9)  return "$" + (p / 1e9).toFixed(2) + "B";
+  if (p >= 1e6)  return "$" + (p / 1e6).toFixed(2) + "M";
   if (p >= 1000) return "$" + Math.round(p).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  if (p >= 1) return "$" + p.toFixed(2);
+  if (p >= 1)    return "$" + p.toFixed(2);
   return "$" + p.toFixed(4);
 }
 function fmtDate(d) {
@@ -452,7 +526,9 @@ function buildLayout() {
     dragmode: "pan",
     xaxis,
     yaxis: {
-      title: "Цена " + CFG.symbol + " (USD, log)",
+      title: VALUE_MODE === "mcap"       ? "Market Cap ETH (USD, log)"
+           : VALUE_MODE === "supply_adj" ? "ETH supply-adjusted (USD, log)"
+           :                                "Цена ETH (USD, log)",
       type: "log",
       gridcolor: "#21262d",
       zerolinecolor: "#30363d",
@@ -601,10 +677,10 @@ async function loadHistory() {
     const j = await r.json();
     const arr = j && j.Data && j.Data.Data;
     if (!Array.isArray(arr) || arr.length === 0) throw new Error("empty");
-    const fresh = arr.filter(x => x.close > 0).map(x => ({ date: new Date(x.time * 1000), price: x.close }));
+    const fresh = arr.filter(x => x.close > 0).map(x => ({ date: new Date(x.time * 1000), nominal: x.close }));
     if (fresh.length < 100) throw new Error("too few: " + fresh.length);
-    points = fresh;
-    dataSource = "CryptoCompare (daily, " + fresh.length + " pts)";
+    pointsRaw = fresh;
+    dataSource = "CryptoCompare (daily, " + fresh.length + " pts) · ETH supply: embedded (" + ETH_SUPPLY.length + " milestones)";
     status.textContent = "✓ Загружено " + fresh.length + " дневных точек.";
     status.className = "status-ok";
   } catch (e) {
@@ -620,9 +696,9 @@ async function fetchSpot() {
     const j = await r.json();
     if (j && j.USD > 0) {
       const today = new Date(); today.setUTCHours(0, 0, 0, 0);
-      const last = points[points.length - 1];
-      if ((today - last.date) / MS_PER_DAY > 0.5) points.push({ date: today, price: j.USD });
-      else points[points.length - 1] = { date: today, price: j.USD };
+      const last = pointsRaw[pointsRaw.length - 1];
+      if ((today - last.date) / MS_PER_DAY > 0.5) pointsRaw.push({ date: today, nominal: j.USD });
+      else pointsRaw[pointsRaw.length - 1] = { date: today, nominal: j.USD };
     }
   } catch (e) {}
 }
@@ -640,6 +716,9 @@ function bindUI() {
   });
   document.getElementById("btn-fair").addEventListener("click", function () {
     SHOW.fair = !SHOW.fair; this.classList.toggle("active", SHOW.fair); render();
+  });
+  document.getElementById("mode").addEventListener("change", function () {
+    VALUE_MODE = this.value; recompute(); render();
   });
   document.getElementById("horizon").addEventListener("change", function () {
     HORIZON_YEARS = parseInt(this.value, 10); render();
